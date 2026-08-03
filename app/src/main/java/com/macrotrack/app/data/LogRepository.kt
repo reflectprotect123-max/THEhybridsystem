@@ -19,6 +19,7 @@ import java.time.LocalDate
 interface LogRepository {
     suspend fun listEntries(date: LocalDate): List<FoodLogEntry>
     suspend fun getDailyTotals(date: LocalDate): DailyTotals?
+    suspend fun listDailyTotals(since: LocalDate): List<DailyTotals>
     suspend fun logFood(date: LocalDate, food: Food, quantity: Double, unit: String, meal: String, notes: String? = null): FoodLogEntry
     suspend fun logCustomFood(date: LocalDate, customFood: CustomFood, quantity: Double, unit: String, meal: String, notes: String? = null): FoodLogEntry
     suspend fun logRecipeServings(date: LocalDate, recipeId: String, loggedServings: Double, meal: String, notes: String? = null): FoodLogEntry
@@ -66,6 +67,17 @@ class SupabaseLogRepository(
             limit(1)
         }.decodeSingleOrNull<DailyTotals>()
         return totals?.takeIf { it.entryCount > 0 }
+    }
+
+    override suspend fun listDailyTotals(since: LocalDate): List<DailyTotals> {
+        val userId = requireUserId()
+        return client.postgrest.from("daily_nutrition_totals").select {
+            filter {
+                eq("user_id", userId)
+                gte("log_date", since.toString())
+            }
+            order("log_date", Order.ASCENDING)
+        }.decodeList<DailyTotals>().filter { it.entryCount > 0 }
     }
 
     override suspend fun logFood(date: LocalDate, food: Food, quantity: Double, unit: String, meal: String, notes: String?): FoodLogEntry {
