@@ -1,0 +1,23 @@
+{
+  "previous_expenditure_kcal": 2800,
+  "body_weight_kg": 89,
+  "target_rate_kg_per_week": -0.3,
+  "protein_g_per_kg": 1.8,
+  "fat_g_per_kg": 0.8,
+  "records": [
+    {"date": "2026-07-01", "calories": 2850, "weight_kg": 89.2},
+    {"date": "2026-07-02", "calories": 2800, "weight_kg": 89.1},
+    {"date": "2026-07-03", "calories": 2780, "weight_kg": 89.0},
+    {"date": "2026-07-04", "calories": 2820, "weight_kg": 88.9},
+    {"date": "2026-07-05", "calories": 2790, "weight_kg": 88.8},
+    {"date": "2026-07-06", "calories": 2810, "weight_kg": 88.7},
+    {"date": "2026-07-07", "calories": 2800, "weight_kg": 88.6},
+    {"date": "2026-07-08", "calories": 2770, "weight_kg": 88.5},
+    {"date": "2026-07-09", "calories": 2790, "weight_kg": 88.4},
+    {"date": "2026-07-10", "calories": 2800, "weight_kg": 88.3},
+    {"date": "2026-07-11", "calories": 2810, "weight_kg": 88.2},
+    {"date": "2026-07-12", "calories": 2780, "weight_kg": 88.1},
+    {"date": "2026-07-13", "calories": 2800, "weight_kg": 88.0},
+    {"date": "2026-07-14", "calories": 2790, "weight_kg": 87.9}
+  ]
+}

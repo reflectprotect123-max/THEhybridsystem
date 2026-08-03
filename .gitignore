@@ -1,0 +1,11 @@
+.gradle/
+build/
+*/build/
+local.properties
+.idea/
+*.iml
+.venv/
+__pycache__/
+*.py[cod]
+seed_foods_*.sql
+supabase/.temp/

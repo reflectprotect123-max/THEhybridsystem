@@ -1,0 +1,3 @@
+Food ID,Food Name,Energy (kJ),Protein (g),Available carbohydrate (g),Total fat (g),Sodium (mg)
+1001,Apple raw,218,0.3,11.4,0.2,2
+1002,Incomplete food,,0.3,11.4,0.2,2
