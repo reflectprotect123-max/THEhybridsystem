@@ -109,7 +109,9 @@ class SupabaseTrendRepository(
         // only (see Utils.kt's `mapToFirstValue`), so two direct `gte`/`lt`
         // calls on the same "trend_date" column would silently drop one of
         // them. `and { }`'s inner params are joined into one string instead,
-        // so both bounds survive.
+        // so both bounds survive -- but only ONE top-level `and { }`/`or { }`
+        // per filter{} block: a second one would overwrite the first the
+        // same way (they're keyed "and"/"or", also folded to a first value).
         val firstPersistedDate = payload.firstOrNull()?.trendDate
         if (firstPersistedDate == null || firstPersistedDate != requestedStart.toString()) {
             client.postgrest.from("weight_trend_points").delete {
