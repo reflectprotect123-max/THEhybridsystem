@@ -1,6 +1,5 @@
 package com.macrotrack.app.domain
 
-import com.macrotrack.app.data.model.Food
 import com.macrotrack.app.data.model.FoodServing
 
 data class ScaledMacros(
@@ -11,7 +10,7 @@ data class ScaledMacros(
 )
 
 /**
- * Scales a Food's stored macros (which are per `food.servingQty` of
+ * Scales a Scalable's stored macros (which are per `food.servingQty` of
  * `food.servingUnit`) to a requested quantity. Never converts between mass
  * and volume (e.g. g <-> ml) by guessing a density — CLAUDE.md's
  * non-negotiable rule #1. A cross-unit conversion is only allowed via an
@@ -21,7 +20,7 @@ data class ScaledMacros(
 object ServingScaler {
     class IncompatibleUnitException(message: String) : Exception(message)
 
-    fun scale(food: Food, quantity: Double, unit: String): ScaledMacros {
+    fun scale(food: Scalable, quantity: Double, unit: String): ScaledMacros {
         if (!unit.equals(food.servingUnit, ignoreCase = true)) {
             throw IncompatibleUnitException(
                 "Cannot scale ${food.name}: requested unit '$unit' does not match " +
@@ -33,7 +32,7 @@ object ServingScaler {
         return scaleByMultiplier(food, multiplier)
     }
 
-    fun scaleByServing(food: Food, serving: FoodServing, servingCount: Double = 1.0): ScaledMacros {
+    fun scaleByServing(food: Scalable, serving: FoodServing, servingCount: Double = 1.0): ScaledMacros {
         require(serving.foodId == food.id) {
             "Serving ${serving.id} belongs to food ${serving.foodId}, not ${food.id}"
         }
@@ -49,7 +48,7 @@ object ServingScaler {
         return scaleByMultiplier(food, multiplier)
     }
 
-    private fun scaleByMultiplier(food: Food, multiplier: Double) = ScaledMacros(
+    private fun scaleByMultiplier(food: Scalable, multiplier: Double) = ScaledMacros(
         calories = food.calories * multiplier,
         proteinG = food.proteinG * multiplier,
         carbsG = food.carbsG * multiplier,

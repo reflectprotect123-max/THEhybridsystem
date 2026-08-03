@@ -1,5 +1,6 @@
 package com.macrotrack.app.data.model
 
+import com.macrotrack.app.domain.Scalable
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
@@ -13,22 +14,22 @@ import kotlinx.serialization.Serializable
  */
 @Serializable
 data class Food(
-    val id: String,
-    val name: String,
+    override val id: String,
+    override val name: String,
     val brand: String? = null,
     val barcode: String? = null,
-    @SerialName("serving_qty") val servingQty: Double,
-    @SerialName("serving_unit") val servingUnit: String,
-    val calories: Double,
-    @SerialName("protein_g") val proteinG: Double,
-    @SerialName("carbs_g") val carbsG: Double,
-    @SerialName("fat_g") val fatG: Double,
+    @SerialName("serving_qty") override val servingQty: Double,
+    @SerialName("serving_unit") override val servingUnit: String,
+    override val calories: Double,
+    @SerialName("protein_g") override val proteinG: Double,
+    @SerialName("carbs_g") override val carbsG: Double,
+    @SerialName("fat_g") override val fatG: Double,
     val source: String,
     @SerialName("external_id") val externalId: String? = null,
     @SerialName("nutrition_basis_qty") val nutritionBasisQty: Double,
     @SerialName("nutrition_basis_unit") val nutritionBasisUnit: String,
     @SerialName("serving_size_text") val servingSizeText: String? = null,
-)
+) : Scalable
 
 /** Mirrors `public.food_servings`. */
 @Serializable

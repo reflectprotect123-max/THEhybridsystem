@@ -1,5 +1,6 @@
 package com.macrotrack.app.domain
 
+import com.macrotrack.app.data.model.CustomFood
 import com.macrotrack.app.data.model.Food
 import com.macrotrack.app.data.model.FoodServing
 import org.junit.Assert.assertEquals
@@ -99,5 +100,27 @@ class ServingScalerTest {
         assertThrows(IllegalArgumentException::class.java) {
             ServingScaler.scaleByServing(oats, mismatchedServing)
         }
+    }
+
+    @Test
+    fun scalesACustomFoodTheSameWayAsAFood() {
+        val customShake = CustomFood(
+            id = "custom-1",
+            userId = "user-1",
+            name = "My Protein Shake",
+            brand = null,
+            barcode = null,
+            servingQty = 250.0,
+            servingUnit = "ml",
+            calories = 180.0,
+            proteinG = 30.0,
+            carbsG = 9.0,
+            fatG = 2.0,
+        )
+
+        val result = ServingScaler.scale(customShake, quantity = 500.0, unit = "ml")
+
+        assertEquals(360.0, result.calories, 0.001)
+        assertEquals(60.0, result.proteinG, 0.001)
     }
 }
