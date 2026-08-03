@@ -9,7 +9,6 @@ import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.postgrest.postgrest
 import io.github.jan.supabase.postgrest.query.Order
-import io.github.jan.supabase.postgrest.query.filter.FilterOperator
 import java.time.Instant
 import java.time.LocalDate
 import java.time.OffsetDateTime
@@ -78,24 +77,52 @@ class SupabaseTrendRepository(
             emptyList()
         } else {
             val earliestDay = samples.minOf { it.measuredAt.atZone(zoneId).toLocalDate() }
-            val series = WeightTrendCalculator.dailyTrend(samples, earliestDay, today, zoneId)
-            series
-                .filter { (day, _) -> !day.isBefore(requestedStart) }
-                .mapNotNull { (day, trendWeightKg) ->
-                    trendWeightKg?.let {
-                        NewTrendPoint(userId = userId, trendDate = day.toString(), trendWeightKg = round1(it))
+            if (earliestDay.isAfter(today)) {
+                // Every weigh-in is future-dated relative to `today` -- nothing
+                // to compute yet; avoid dailyTrend's own end-before-start guard.
+                emptyList()
+            } else {
+                val series = WeightTrendCalculator.dailyTrend(samples, earliestDay, today, zoneId)
+                series
+                    .filter { (day, _) -> !day.isBefore(requestedStart) }
+                    .mapNotNull { (day, trendWeightKg) ->
+                        trendWeightKg?.let {
+                            NewTrendPoint(userId = userId, trendDate = day.toString(), trendWeightKg = round1(it))
+                        }
                     }
-                }
+            }
         }
 
-        val survivingDates = payload.map { it.trendDate }
-        client.postgrest.from("weight_trend_points").delete {
-            filter {
-                eq("user_id", userId)
-                gte("trend_date", requestedStart.toString())
-                lte("trend_date", today.toString())
-                if (survivingDates.isNotEmpty()) {
-                    filterNot("trend_date", FilterOperator.IN, survivingDates)
+        // `payload` is always a contiguous run from max(earliestDay, requestedStart)
+        // through `today` -- AdaptiveEngine.weightTrend carries the last trend
+        // value forward forever once seeded, so it never re-emits null once a
+        // weigh-in has been seen. That means the only rows that can be stale in
+        // [requestedStart, today] are a leading gap before payload's first date
+        // (source weigh-ins before that date were deleted) or, if payload is
+        // empty, the entire window (all source data gone). Clean up exactly
+        // that range -- never rows the fresh payload is about to rewrite -- so
+        // an unchanged day's `created_at` isn't reset on every recompute.
+        //
+        // The delete's two trend_date bounds are grouped inside `and { }`
+        // rather than as two direct `filter{}` calls: postgrest-kt's top-level
+        // request params are keyed by column and folded to their FIRST value
+        // only (see Utils.kt's `mapToFirstValue`), so two direct `gte`/`lt`
+        // calls on the same "trend_date" column would silently drop one of
+        // them. `and { }`'s inner params are joined into one string instead,
+        // so both bounds survive.
+        val firstPersistedDate = payload.firstOrNull()?.trendDate
+        if (firstPersistedDate == null || firstPersistedDate != requestedStart.toString()) {
+            client.postgrest.from("weight_trend_points").delete {
+                filter {
+                    eq("user_id", userId)
+                    and {
+                        gte("trend_date", requestedStart.toString())
+                        if (firstPersistedDate != null) {
+                            lt("trend_date", firstPersistedDate)
+                        } else {
+                            lte("trend_date", today.toString())
+                        }
+                    }
                 }
             }
         }

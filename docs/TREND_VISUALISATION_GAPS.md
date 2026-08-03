@@ -27,10 +27,28 @@ obvious right answer.
   already uses (compute over full history, filter to a window after).
 - **Important:** deleting a weigh-in left stale rows in `weight_trend_points`
   untouched — `weight-logging`'s own gaps doc assigned this exactly to this
-  slice ("whoever builds the trend slice owns that"). Fixed: `recomputeTrend`
-  now deletes any previously-persisted row in `[since, today]` whose date is
-  not in the freshly computed set, so a deleted source weigh-in's derived
-  rows disappear on the next recompute rather than surviving indefinitely.
+  slice ("whoever builds the trend slice owns that"). First fix attempt used
+  `filterNot("trend_date", FilterOperator.IN, survivingDates)` alongside
+  `gte`/`lte` on the same column inside one `filter { }` block — a scoped
+  re-review caught that postgrest-kt's top-level request params are keyed by
+  column and folded to their **first** value only
+  (`Utils.kt`'s `mapToFirstValue`), so two of those three conditions were
+  silently dropped and the delete executed as an unbounded
+  `trend_date >= since`, resetting `created_at` on every unchanged row on
+  every recompute and opening a non-atomic delete-then-reinsert window over
+  the user's entire trend history. Corrected by exploiting a property of the
+  series itself: once `AdaptiveEngine.weightTrend` sees a first non-null
+  input it never re-emits `null`, so a non-empty `payload` is always a
+  contiguous run from `max(earliestDay, requestedStart)` through `today` —
+  the only rows that can be stale are a leading gap before `payload`'s first
+  date, or (if `payload` is empty) the whole window. The delete now targets
+  exactly that range, grouping its two `trend_date` bounds inside `and { }`
+  (verified against the real 3.7.0 sources: `and { }`'s inner params are
+  joined into one string rather than folded to a first value, so both bounds
+  survive), and is skipped entirely in the common case where nothing is
+  orphaned — so an unchanged row's `created_at` is preserved via ordinary
+  `ON CONFLICT DO UPDATE` upsert semantics instead of being churned through a
+  delete-then-insert.
 
 ## `source_window_days` does not correspond to anything the code computes
 
@@ -66,6 +84,29 @@ not its parameter — α isn't recorded anywhere on the row. If
 indistinguishable from rows computed under the new value, and nothing
 prompts a recompute. Worth deciding alongside the above: a version-suffixed
 `method` (`ewma_reference_v1`) or a stored `alpha` column.
+
+## `recomputeTrend`'s delete-then-upsert is two requests, not one transaction
+
+The stale-row cleanup delete and the batched upserts are separate HTTP
+requests; postgrest-kt has no multi-statement transaction primitive to wrap
+them in. A crash between the two leaves the delete applied without the
+upsert. This is far less dangerous than it would have been with the first
+fix attempt above — the delete now only ever removes rows already
+determined to be orphaned (no current source data supports them), never
+rows the upsert is about to rewrite with a fresh value — so a crash in that
+window loses nothing that wasn't already gone from the source data's
+perspective. Still worth recording: a true transaction (e.g. a Postgres
+function called via RPC) would close this window entirely, and hasn't been
+attempted here.
+
+`recomputeTrend` also now fetches full history unconditionally
+(`weightRepository.listEntries(Instant.EPOCH)`) to seed the EWMA correctly,
+rather than only fetching from `since`. `WeightRepository.listEntries` has
+no row limit and orders ascending (a gap already recorded in
+`WEIGHT_LOGGING_GAPS.md`); fetching full history on every recompute makes
+that existing gap's failure mode — a project-level PostgREST row cap
+silently truncating the *newest* rows — more likely to actually bite than
+it was when only a bounded `since`-forward range was fetched.
 
 ## Same-day combination is a fixed function, not a configurable parameter
 
