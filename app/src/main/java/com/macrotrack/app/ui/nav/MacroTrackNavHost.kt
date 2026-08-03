@@ -4,6 +4,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -18,18 +21,31 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.macrotrack.app.data.AppContainer
 import com.macrotrack.app.ui.auth.AuthScreen
 import com.macrotrack.app.ui.auth.AuthViewModel
+import com.macrotrack.app.ui.coach.CoachScreen
+import com.macrotrack.app.ui.coach.CoachViewModel
 import com.macrotrack.app.ui.dailylog.DailyLogScreen
 import com.macrotrack.app.ui.dailylog.DailyLogViewModel
 import com.macrotrack.app.ui.search.AddLogEntryScreen
 import com.macrotrack.app.ui.search.AddLogEntryViewModel
 import com.macrotrack.app.ui.search.FoodSearchScreen
 import com.macrotrack.app.ui.search.FoodSearchViewModel
+import com.macrotrack.app.ui.weight.WeightScreen
+import com.macrotrack.app.ui.weight.WeightViewModel
 import io.github.jan.supabase.auth.status.SessionStatus
+
+private data class BottomNavItem(val route: String, val label: String)
+
+private val BOTTOM_NAV_ITEMS = listOf(
+    BottomNavItem(Destinations.DAILY_LOG, "Log"),
+    BottomNavItem(Destinations.WEIGHT, "Weight"),
+    BottomNavItem(Destinations.COACH, "Coach"),
+)
 
 @Composable
 fun MacroTrackNavHost(appContainer: AppContainer) {
@@ -69,73 +85,137 @@ fun MacroTrackNavHost(appContainer: AppContainer) {
         }
         is SessionStatus.Authenticated -> {
             val navController = rememberNavController()
-            NavHost(navController = navController, startDestination = Destinations.DAILY_LOG) {
-                composable(Destinations.DAILY_LOG) {
-                    val dailyLogViewModel: DailyLogViewModel = viewModel(
-                        factory = viewModelFactory {
-                            initializer {
-                                DailyLogViewModel(
-                                    logRepository = appContainer.logRepository,
-                                    dayStatusRepository = appContainer.dayStatusRepository,
-                                    authRepository = authRepository,
+            val backStackEntry by navController.currentBackStackEntryAsState()
+            val currentRoute = backStackEntry?.destination?.route
+            val topLevelRoutes = setOf(Destinations.DAILY_LOG, Destinations.WEIGHT, Destinations.COACH)
+
+            Scaffold(
+                bottomBar = {
+                    if (currentRoute in topLevelRoutes) {
+                        NavigationBar {
+                            BOTTOM_NAV_ITEMS.forEach { item ->
+                                NavigationBarItem(
+                                    selected = currentRoute == item.route,
+                                    onClick = {
+                                        if (currentRoute != item.route) {
+                                            navController.navigate(item.route) { launchSingleTop = true }
+                                        }
+                                    },
+                                    // Plain Text, not an Icons.Filled.* ImageVector -- avoids
+                                    // depending on material-icons-core/extended a second time
+                                    // beyond the one already-flagged, unverified Icons.Filled.Add
+                                    // usage on Daily Log's FAB (see the prior plan's Task 5 note).
+                                    icon = { Text(item.label.take(1)) },
+                                    label = { Text(item.label) },
                                 )
                             }
-                        },
-                    )
-                    DailyLogScreen(
-                        viewModel = dailyLogViewModel,
-                        onAddFood = { navController.navigate(Destinations.FOOD_SEARCH) },
-                    )
-                }
-                composable(Destinations.FOOD_SEARCH) {
-                    val foodSearchViewModel: FoodSearchViewModel = viewModel(
-                        factory = viewModelFactory {
-                            initializer {
-                                FoodSearchViewModel(
-                                    appContainer.foodRepository,
-                                    appContainer.customFoodRepository,
-                                    appContainer.recipeRepository,
-                                    appContainer.favoritesRepository,
-                                    appContainer.recentFoodRepository,
-                                )
-                            }
-                        },
-                    )
-                    FoodSearchScreen(
-                        viewModel = foodSearchViewModel,
-                        onResultSelected = { entryKind, id ->
-                            navController.navigate(Destinations.addLogEntryRoute(entryKind, id))
-                        },
-                    )
-                }
-                composable(
-                    route = Destinations.ADD_LOG_ENTRY_PATTERN,
-                    arguments = listOf(
-                        navArgument("entryKind") { type = NavType.StringType },
-                        navArgument("id") { type = NavType.StringType },
-                    ),
-                ) { backStackEntry ->
-                    val entryKind = backStackEntry.arguments?.getString("entryKind").orEmpty()
-                    val id = backStackEntry.arguments?.getString("id").orEmpty()
-                    val addLogEntryViewModel: AddLogEntryViewModel = viewModel(
-                        factory = viewModelFactory {
-                            initializer {
-                                AddLogEntryViewModel(
-                                    entryKind = entryKind,
-                                    id = id,
-                                    foodRepository = appContainer.foodRepository,
-                                    customFoodRepository = appContainer.customFoodRepository,
-                                    recipeRepository = appContainer.recipeRepository,
-                                    logRepository = appContainer.logRepository,
-                                )
-                            }
-                        },
-                    )
-                    AddLogEntryScreen(
-                        viewModel = addLogEntryViewModel,
-                        onSaved = { navController.popBackStack(Destinations.DAILY_LOG, inclusive = false) },
-                        onCancel = { navController.popBackStack() },
-                    )
+                        }
+                    }
+                },
+            ) { paddingValues ->
+                NavHost(
+                    navController = navController,
+                    startDestination = Destinations.DAILY_LOG,
+                    modifier = Modifier.padding(paddingValues),
+                ) {
+                    composable(Destinations.DAILY_LOG) {
+                        val dailyLogViewModel: DailyLogViewModel = viewModel(
+                            factory = viewModelFactory {
+                                initializer {
+                                    DailyLogViewModel(
+                                        logRepository = appContainer.logRepository,
+                                        dayStatusRepository = appContainer.dayStatusRepository,
+                                        authRepository = authRepository,
+                                    )
+                                }
+                            },
+                        )
+                        DailyLogScreen(
+                            viewModel = dailyLogViewModel,
+                            onAddFood = { navController.navigate(Destinations.FOOD_SEARCH) },
+                        )
+                    }
+                    composable(Destinations.WEIGHT) {
+                        val weightViewModel: WeightViewModel = viewModel(
+                            factory = viewModelFactory {
+                                initializer {
+                                    WeightViewModel(
+                                        weightRepository = appContainer.weightRepository,
+                                        trendRepository = appContainer.trendRepository,
+                                    )
+                                }
+                            },
+                        )
+                        WeightScreen(viewModel = weightViewModel)
+                    }
+                    composable(Destinations.COACH) {
+                        val coachViewModel: CoachViewModel = viewModel(
+                            factory = viewModelFactory {
+                                initializer {
+                                    CoachViewModel(
+                                        expenditureRepository = appContainer.expenditureRepository,
+                                        checkInRepository = appContainer.checkInRepository,
+                                    )
+                                }
+                            },
+                        )
+                        CoachScreen(
+                            viewModel = coachViewModel,
+                            onLogWeight = {
+                                navController.navigate(Destinations.WEIGHT) { launchSingleTop = true }
+                            },
+                        )
+                    }
+                    composable(Destinations.FOOD_SEARCH) {
+                        val foodSearchViewModel: FoodSearchViewModel = viewModel(
+                            factory = viewModelFactory {
+                                initializer {
+                                    FoodSearchViewModel(
+                                        appContainer.foodRepository,
+                                        appContainer.customFoodRepository,
+                                        appContainer.recipeRepository,
+                                        appContainer.favoritesRepository,
+                                        appContainer.recentFoodRepository,
+                                    )
+                                }
+                            },
+                        )
+                        FoodSearchScreen(
+                            viewModel = foodSearchViewModel,
+                            onResultSelected = { entryKind, id ->
+                                navController.navigate(Destinations.addLogEntryRoute(entryKind, id))
+                            },
+                        )
+                    }
+                    composable(
+                        route = Destinations.ADD_LOG_ENTRY_PATTERN,
+                        arguments = listOf(
+                            navArgument("entryKind") { type = NavType.StringType },
+                            navArgument("id") { type = NavType.StringType },
+                        ),
+                    ) { backStackEntryArgs ->
+                        val entryKind = backStackEntryArgs.arguments?.getString("entryKind").orEmpty()
+                        val id = backStackEntryArgs.arguments?.getString("id").orEmpty()
+                        val addLogEntryViewModel: AddLogEntryViewModel = viewModel(
+                            factory = viewModelFactory {
+                                initializer {
+                                    AddLogEntryViewModel(
+                                        entryKind = entryKind,
+                                        id = id,
+                                        foodRepository = appContainer.foodRepository,
+                                        customFoodRepository = appContainer.customFoodRepository,
+                                        recipeRepository = appContainer.recipeRepository,
+                                        logRepository = appContainer.logRepository,
+                                    )
+                                }
+                            },
+                        )
+                        AddLogEntryScreen(
+                            viewModel = addLogEntryViewModel,
+                            onSaved = { navController.popBackStack(Destinations.DAILY_LOG, inclusive = false) },
+                            onCancel = { navController.popBackStack() },
+                        )
+                    }
                 }
             }
         }

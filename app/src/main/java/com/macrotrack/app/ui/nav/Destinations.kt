@@ -3,6 +3,8 @@ package com.macrotrack.app.ui.nav
 object Destinations {
     const val AUTH = "auth"
     const val DAILY_LOG = "daily_log"
+    const val WEIGHT = "weight"
+    const val COACH = "coach"
     const val FOOD_SEARCH = "food_search"
 
     private const val ADD_LOG_ENTRY_BASE = "add_log_entry"
