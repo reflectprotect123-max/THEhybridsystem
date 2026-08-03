@@ -60,7 +60,7 @@ fun AuthScreen(viewModel: AuthViewModel) {
             modifier = Modifier.fillMaxWidth(),
         ) {
             if (uiState.isSubmitting) {
-                CircularProgressIndicator(modifier = Modifier.padding(2.dp))
+                CircularProgressIndicator(modifier = Modifier.size(20.dp).padding(2.dp))
             } else {
                 Text(if (isSignUpMode) "Sign up" else "Sign in")
             }
