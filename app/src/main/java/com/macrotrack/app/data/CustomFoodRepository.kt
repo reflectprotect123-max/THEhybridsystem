@@ -11,6 +11,7 @@ interface CustomFoodRepository {
     suspend fun list(): List<CustomFood>
     suspend fun create(name: String, brand: String?, servingQty: Double, servingUnit: String, calories: Double, proteinG: Double, carbsG: Double, fatG: Double, barcode: String? = null): CustomFood
     suspend fun delete(id: String)
+    suspend fun getById(id: String): CustomFood?
 }
 
 class SupabaseCustomFoodRepository(private val client: SupabaseClient) : CustomFoodRepository {
@@ -63,5 +64,12 @@ class SupabaseCustomFoodRepository(private val client: SupabaseClient) : CustomF
                 eq("user_id", userId)
             }
         }
+    }
+
+    override suspend fun getById(id: String): CustomFood? {
+        return client.postgrest.from("custom_foods").select {
+            filter { eq("id", id) }
+            limit(1)
+        }.decodeSingleOrNull<CustomFood>()
     }
 }

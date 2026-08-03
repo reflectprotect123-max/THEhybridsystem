@@ -12,6 +12,7 @@ interface FoodRepository {
     suspend fun findByBarcode(barcode: String): Food?
     suspend fun search(query: String, limit: Int = 20): List<Food>
     suspend fun getServings(foodId: String): List<FoodServing>
+    suspend fun getById(id: String): Food?
 }
 
 class SupabaseFoodRepository(private val client: SupabaseClient) : FoodRepository {
@@ -44,5 +45,12 @@ class SupabaseFoodRepository(private val client: SupabaseClient) : FoodRepositor
             filter { eq("food_id", foodId) }
             order("sort_order", Order.ASCENDING)
         }.decodeList<FoodServing>()
+    }
+
+    override suspend fun getById(id: String): Food? {
+        return client.postgrest.from("foods").select {
+            filter { eq("id", id) }
+            limit(1)
+        }.decodeSingleOrNull<Food>()
     }
 }

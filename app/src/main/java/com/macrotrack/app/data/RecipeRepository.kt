@@ -14,6 +14,7 @@ interface RecipeRepository {
     suspend fun create(name: String, description: String?, instructions: String?, servings: Double): Recipe
     suspend fun addItem(recipeId: String, foodId: String?, customFoodId: String?, quantity: Double, unit: String, sortOrder: Int): RecipeItem
     suspend fun getItems(recipeId: String): List<RecipeItem>
+    suspend fun getById(id: String): Recipe?
 }
 
 class SupabaseRecipeRepository(private val client: SupabaseClient) : RecipeRepository {
@@ -71,5 +72,12 @@ class SupabaseRecipeRepository(private val client: SupabaseClient) : RecipeRepos
             filter { eq("recipe_id", recipeId) }
             order("sort_order", Order.ASCENDING)
         }.decodeList<RecipeItem>()
+    }
+
+    override suspend fun getById(id: String): Recipe? {
+        return client.postgrest.from("recipes").select {
+            filter { eq("id", id) }
+            limit(1)
+        }.decodeSingleOrNull<Recipe>()
     }
 }
