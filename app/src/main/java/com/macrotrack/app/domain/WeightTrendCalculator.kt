@@ -31,7 +31,7 @@ object WeightTrendCalculator {
         start: LocalDate,
         end: LocalDate,
         zoneId: ZoneId = ZoneId.systemDefault(),
-        alpha: Double = 0.20,
+        alpha: Double = EngineConfig().trendAlpha,
     ): List<Pair<LocalDate, Double?>> {
         require(!end.isBefore(start)) { "end must not be before start, got start=$start end=$end" }
         val averagedByDay = averageByLocalDay(samples, zoneId)
