@@ -69,6 +69,7 @@ class SupabaseLogRepository(
     }
 
     override suspend fun logFood(date: LocalDate, food: Food, quantity: Double, unit: String, meal: String, notes: String?): FoodLogEntry {
+        require(quantity > 0) { "quantity must be > 0, got $quantity" }
         val servings = foodRepository.getServings(food.id)
         val macros = MacroResolution.resolveFoodMacros(food, servings, quantity, unit)
         return insertEntry(
@@ -78,6 +79,7 @@ class SupabaseLogRepository(
     }
 
     override suspend fun logCustomFood(date: LocalDate, customFood: CustomFood, quantity: Double, unit: String, meal: String, notes: String?): FoodLogEntry {
+        require(quantity > 0) { "quantity must be > 0, got $quantity" }
         val macros = ServingScaler.scale(customFood, quantity, unit)
         return insertEntry(
             date = date, entryKind = EntryKind.CUSTOM_FOOD, foodId = null, customFoodId = customFood.id, recipeId = null,
