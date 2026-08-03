@@ -41,6 +41,12 @@ the check-in result, not a systemic mismatch across the whole engine.
 
 ## Nullable engine fields vs. `NOT NULL` schema columns
 
+**Resolved** by `docs/superpowers/plans/2026-08-03-expenditure-state.md` — see
+`docs/EXPENDITURE_STATE_GAPS.md`'s "Resolution: when a row is persisted" for
+the decision (skip the insert on exactly the paths where these fields are
+null; never a sentinel). Left below for historical context on why this was
+a real gap, not a hypothetical one.
+
 `expenditure_estimates.estimate_kcal`, `window_start`, and `window_end` are
 all `not null`. `ExpenditureEstimate.estimateKcal`/`windowStart`/`windowEnd`
 are nullable in the Kotlin (matching the Python, which returns `None`/`null`

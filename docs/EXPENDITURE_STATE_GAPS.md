@@ -139,3 +139,106 @@ already-tested pure functions it composes (`ExpenditureRecordAssembler`,
 `AdaptiveEngine.estimateExpenditure`), but the wiring between them is not
 independently tested. Worth revisiting if this codebase ever adds a fake
 Postgrest client for repository-level tests.
+
+## Fixed during final review: a declared fast was never actually countable
+
+`ExpenditureRecordAssembler.assemble` originally set `calories =
+totalsByDay[day]` unconditionally. A real fasted day has no
+`food_log_entries` rows at all (the user ate nothing), so
+`daily_nutrition_totals` never has a row for it -- `totalsByDay[day]` is
+`null`, identical to a genuinely unlogged day. `AdaptiveEngine.nutritionIsCountable`
+only treats `"fasted"` as countable when `calories == 0.0` explicitly, so
+without a fallback every declared fast silently read as uncountable, no
+different from `"unlogged"` -- a user who fasts even one day a week could
+never satisfy the 6-of-7-day coverage gate in either seven-day period,
+permanently `holding`. Fixed: a day with no totals row AND
+`nutritionStatus == DayStatus.FASTED` now gets `calories = 0.0`. This is the
+explicit user declaration the schema itself documents ("'fasted' is a user
+declaration, not an inference from missing entries"), not an inferred
+zero-fill -- an `UNLOGGED` day is untouched and still gets `null`.
+
+## Still open: nothing writes `daily_log_status`, so this slice cannot produce a non-holding estimate yet
+
+The only writer of `daily_log_status` is `DayStatusRepository.setStatus`,
+and nothing in `app/src/main` calls it -- there is no ViewModel/UI layer yet
+(`MainActivity.kt` is the only non-repository, non-domain file in the app
+module). `AdaptiveEngine.nutritionIsCountable` requires `status ==
+"complete"`. With no status rows ever written, every assembled day is
+`DayStatus.UNLOGGED`, `nutritionDays` stays `0`, the coverage gate never
+passes, and `recomputeExpenditure()` stays in `holding` with a null anchor
+forever -- meaning **no row is ever actually inserted** with the code as it
+stands today, even for a user who logs food faithfully every day. Whether
+logging food should auto-mark a day `complete`, or whether that should stay
+an explicit end-of-day user action, is an undecided product question. This
+is the single biggest thing standing between this slice and a working
+expenditure state, and it belongs to whichever future slice adds day-status
+UI or an auto-completion rule.
+
+## Still open: the weekly-check-in slice cannot reuse this pipeline without duplicating its subtlest logic
+
+`WeeklyCheckIn.weeklyCheckIn` (already built) calls
+`AdaptiveEngine.estimateExpenditure` itself, needing the same full-history
+`DailyRecord` series and the same damping anchor this repository already
+assembles. But `ExpenditureRepository`'s interface exposes neither: only the
+final `ExpenditureEstimate`. A future check-in repository would have to
+re-implement full-history fetch → `WeightTrendCalculator.averageByLocalDay`
+→ `ExpenditureRecordAssembler.assemble` → damping-anchor selection from
+scratch -- and the anchor rule (same-day → `previous.previousEstimateKcal`,
+otherwise → `previous.estimateKcal`) exists only as prose in this file's
+`recomputeExpenditure` KDoc, not as a reusable, tested unit. Getting it
+wrong risks reintroducing the exact per-invocation drift bug this slice
+already spent three review rounds fixing, with a second, independent
+`estimateExpenditure` call that could silently disagree with the persisted
+row. Recommended before that slice starts: expose the assembled records and
+resolved anchor from `ExpenditureRepository` (e.g. a
+`suspend fun loadRecords(): Pair<List<DailyRecord>, Double?>`), and add a
+`PersistedExpenditureEstimate.toDomain(): ExpenditureEstimate` converter --
+today, every consumer that wants `explanation` back has to dig
+`inputs["explanation"]` out of a `JsonObject` by hand, exactly as
+`ExpenditureEstimateModelsTest` does.
+
+## Still open: a persisted row does not record which `EngineConfig` produced it
+
+`recomputeExpenditure` constructs `EngineConfig()` inline every call.
+CLAUDE.md's adaptive-engine rules require these parameters stay
+"configurable, deterministic, versioned, and explainable", but nothing on a
+persisted `expenditure_estimates` row records which parameter values
+produced it -- `inputs` holds only `explanation`, and `method` is always the
+schema's static default string, regardless of engine version. After any
+future change to `EngineConfig`'s defaults, historical rows become
+un-re-derivable and un-explainable: there's no way to tell, from the row
+alone, whether it was computed under the old parameters or the new ones.
+
+## Still open: unbounded row growth with no dedup
+
+A user who stays in a sustained `holding` state (see the "nothing writes
+`daily_log_status`" gap above -- today, every user) would, once something
+does call `recomputeExpenditure()` regularly, persist one row per calendar
+day of app usage indefinitely, even when every one of those rows is
+identical to the last. There is no dedup for consecutive unchanged rows and
+no retention policy, and `getLatestEstimate()` (the only reader) never
+surfaces the growing row count to anything. Related to, but distinct from,
+the concurrent-duplicate-rows gap above.
+
+## Still open: damping cadence is a function of how often the app is opened, not of elapsed time
+
+The "damping cap ambiguity in contract doc" gap above assumes
+`recomputeExpenditure` runs roughly daily. It doesn't have to: a user who
+opens the app weekly gets one 100 kcal step per week of elapsed time; one
+who opens it after a month away gets exactly one 100 kcal step for that
+entire month, with no catch-up toward the raw value. The effective
+adaptation rate is therefore a function of app-open frequency, not of
+elapsed time or of how much new data arrived. This interacts directly with
+the still-open "no scheduling/trigger" gap above -- resolving that one
+(e.g. a background recompute on a fixed schedule) would also resolve this
+one.
+
+## Still open: `window_start`/`window_end` do not mean what a future consumer may assume
+
+`window_end` is always the day `recomputeExpenditure` ran on, and
+`window_start` is `max(firstEverRecordDay, window_end - 13 days)` -- a
+rolling 14-day *analysis* window feeding the trend/mean-intake calculation,
+not "the period this estimate covers" in a calendar sense.
+`weekly_check_ins.week_start`/`week_end` are a completely different concept
+(a specific Mon-Sun check-in period). A future consumer should not join or
+compare these two date-range pairs as if they describe the same thing.

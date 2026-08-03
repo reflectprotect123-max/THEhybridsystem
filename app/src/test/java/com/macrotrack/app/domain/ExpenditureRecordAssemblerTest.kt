@@ -68,6 +68,32 @@ class ExpenditureRecordAssemblerTest {
     }
 
     @Test
+    fun aFastedDayWithNoTotalsRowAtAllIsStillCountedAsZeroCalories() {
+        // The realistic shape: a real fasted day has no food_log_entries at
+        // all, so daily_nutrition_totals never has a row for it -- there is
+        // no DailyTotals to hand-feed here, unlike aFastedDayKeepsItsExplicitZeroCalories.
+        val day = LocalDate.of(2026, 8, 4)
+        val statuses = listOf(DailyLogStatus(userId = "user-1", logDate = day.toString(), status = DayStatus.FASTED))
+
+        val result = ExpenditureRecordAssembler.assemble(statuses, emptyList(), emptyMap(), day, day)
+
+        assertEquals(DayStatus.FASTED, result[0].nutritionStatus)
+        assertEquals(0.0, result[0].calories!!, 0.001)
+        assertEquals(true, AdaptiveEngine.nutritionIsCountable(result[0]))
+    }
+
+    @Test
+    fun anUnlogedDayIsNotGivenAZeroFallback() {
+        val day = LocalDate.of(2026, 8, 5)
+        val statuses = listOf(DailyLogStatus(userId = "user-1", logDate = day.toString(), status = DayStatus.UNLOGGED))
+
+        val result = ExpenditureRecordAssembler.assemble(statuses, emptyList(), emptyMap(), day, day)
+
+        assertNull(result[0].calories)
+        assertEquals(false, AdaptiveEngine.nutritionIsCountable(result[0]))
+    }
+
+    @Test
     fun aMultiDayRangeIsAssembledInAscendingOrder() {
         val day1 = LocalDate.of(2026, 8, 1)
         val day2 = LocalDate.of(2026, 8, 2)

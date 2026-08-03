@@ -42,6 +42,9 @@ class SupabaseExpenditureRepository(
         return client.postgrest.from("expenditure_estimates").select {
             filter { eq("user_id", userId) }
             order("created_at", Order.DESCENDING)
+            // `id` is a random uuid, not a sequence -- this tiebreaker only
+            // makes a created_at tie deterministic (so retries/tests are
+            // reproducible), it does not mean "and then by recency".
             order("id", Order.DESCENDING)
             limit(1)
         }.decodeSingleOrNull<PersistedExpenditureEstimate>()
@@ -79,6 +82,14 @@ class SupabaseExpenditureRepository(
         val today = LocalDate.now(zoneId)
 
         val previous = getLatestEstimate()
+        // "previous is from today" is only decidable this cheaply because
+        // ExpenditureRecordAssembler.assemble is always called with
+        // end = today (below), so estimateExpenditure's windowEnd is always
+        // today's date whenever a row gets persisted. If that ever changes
+        // (e.g. ending records at the last *logged* day instead), this
+        // comparison silently stops detecting same-day recomputes and the
+        // per-invocation damping-chain bug this whole function exists to
+        // prevent would return undetected.
         val isPreviousFromToday = previous != null && previous.windowEnd == today.toString()
         val dampingAnchor = when {
             previous == null -> null
