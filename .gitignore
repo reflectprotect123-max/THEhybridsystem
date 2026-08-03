@@ -9,3 +9,4 @@ __pycache__/
 *.py[cod]
 seed_foods_*.sql
 supabase/.temp/
+.superpowers/
