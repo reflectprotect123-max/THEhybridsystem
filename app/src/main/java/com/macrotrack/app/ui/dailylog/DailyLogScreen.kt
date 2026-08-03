@@ -69,6 +69,7 @@ fun DailyLogScreen(viewModel: DailyLogViewModel, onAddFood: () -> Unit) {
                 Icon(Icons.Filled.Add, contentDescription = "Add food")
             }
         },
+        contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0),
     ) { paddingValues ->
         Column(modifier = Modifier.fillMaxSize().padding(paddingValues).padding(16.dp)) {
             Row(
