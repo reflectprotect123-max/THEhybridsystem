@@ -20,6 +20,11 @@ this engine, which is why they're recorded now rather than silently.
 
 ## `weeklyCheckIn`'s "ready" status has no home in `weekly_check_ins.status`
 
+**Resolved** by `docs/superpowers/plans/2026-08-03-weekly-check-in.md` — see
+`docs/WEEKLY_CHECKIN_GAPS.md`'s "Resolution: status vocabulary mapping":
+`CheckInRepository.recomputeCheckIn` maps `"ready"` to `"pending"` and
+passes `"held"` through unchanged. Left below for historical context.
+
 `supabase/migrations/001_macro_foundation.sql`'s `weekly_check_ins` table has:
 
 ```sql

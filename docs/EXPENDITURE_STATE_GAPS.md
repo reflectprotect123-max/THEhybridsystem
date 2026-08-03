@@ -7,6 +7,28 @@ here, not filled with guesses. From building
 `docs/ADAPTIVE_ENGINE_GAPS.md`'s "Nullable engine fields vs. NOT NULL schema
 columns" gap.
 
+## Still open: `loadRecords()` extraction (from the weekly-check-in slice) introduced a narrow midnight race
+
+`docs/superpowers/plans/2026-08-03-weekly-check-in.md` extracted
+`recomputeExpenditure()`'s fetch/assemble/anchor logic into a new
+`loadRecords()` method so `CheckInRepository` could reuse it. That refactor
+was reviewed and confirmed behavior-preserving, with one narrow exception:
+`recomputeExpenditure()` and `loadRecords()` now each call
+`LocalDate.now(zoneId)` independently, separated by a `getLatestEstimate()`
+network round trip, where before there was exactly one `today` shared by
+both. If the clock rolls over in that window, `recomputeExpenditure()`'s
+own `isPreviousFromToday` (computed against the earlier `today`) can end up
+true while `loadRecords()`'s internal anchor selection (computed against
+the later `today`) treats the same row as *not* from today — the net
+effect is that a genuine prior-day estimate row gets deleted as if it were
+today's own row, losing one day of persisted estimate history. The damping
+anchor itself stays correct either way (verified during review), so this
+is a data-retention gap, not a correctness regression in the numbers.
+Fixable by threading one shared `today` into `loadRecords()` (e.g. as an
+optional parameter defaulting to a fresh `LocalDate.now(zoneId)`, so
+`CheckInRepository`'s call site doesn't need to change) — not done here to
+keep the refactor itself minimal and reviewable.
+
 ## Resolution: when a row is persisted
 
 `ExpenditureRepository.recomputeExpenditure` only inserts into

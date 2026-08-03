@@ -96,36 +96,41 @@ and write side can never silently disagree on field names.
 
 ### Upsert conflict target: explicit onConflict on the real natural key
 
-`recomputeCheckIn`'s upsert did not set `onConflict`, so postgrest-kt defaulted to
-targeting `weekly_check_ins`'s primary key (`id uuid primary key default
-gen_random_uuid()`). Since `NewCheckIn` never includes `id` (server-generated), that
-default conflict target never actually fires -- a second `recomputeCheckIn` call for
-the same week would instead hit the table's *separate* `unique(user_id, week_start)`
-constraint directly, which throws a raw duplicate-key database error rather than
-updating the existing row. `DayStatusRepository`/`TrendRepository`'s tables don't have
-this problem because their composite natural key (`(user_id, log_date)`/`(user_id,
-trend_date)`) *is* their primary key, so the same unset-`onConflict` pattern happens
-to target the right columns there. `weekly_check_ins`'s surrogate `id` breaks that
-assumption. Fixed by setting `onConflict = "user_id,week_start"` explicitly in the
-upsert call.
+`recomputeCheckIn`'s upsert did not set `onConflict`. `UpsertRequestBuilder.onConflict`
+defaults to `null`, so postgrest-kt never sent an `on_conflict` query param at all --
+it's PostgREST itself that then falls back to the table's primary key
+(`weekly_check_ins.id uuid primary key default gen_random_uuid()`) as the implicit
+`ON CONFLICT` target for `resolution=merge-duplicates`. Since `NewCheckIn` never
+includes `id` (server-generated), that fallback target never actually conflicts with
+anything -- a second `recomputeCheckIn` call for the same week instead hit the table's
+*separate* `unique(user_id, week_start)` constraint directly, which throws a raw
+duplicate-key database error rather than updating the existing row. `DayStatusRepository`/
+`TrendRepository`'s tables don't have this problem because their composite natural key
+(`(user_id, log_date)`/`(user_id, trend_date)`) *is* their primary key, so the same
+unset-`onConflict` pattern happens to fall back onto the right columns there.
+`weekly_check_ins`'s surrogate `id` breaks that assumption. Fixed by setting
+`onConflict = "user_id,week_start"` explicitly in the upsert call.
 
-## Still open: damped expenditure estimate not persisted
+## Still open: the damped expenditure estimate is reconstructible but not versioned
 
-`proposed_expenditure_kcal` and `proposed_calories` both hold the same calorie target
-value (by the adaptive engine's own design — the target already factors in the user's
-signed goal rate). `observed_expenditure_kcal` now holds the raw, undamped observed
-value (from `result.estimate.rawEstimateKcal`). However, the actual *damped*
-expenditure estimate (`result.estimate.estimateKcal` — the number the calorie target
-was derived from, after the 100kcal/day damping cap was applied in
-`AdaptiveEngine.estimateExpenditure`) is not stored anywhere on the check-in row.
+`proposed_expenditure_kcal`/`proposed_calories` hold the calorie target;
+`observed_expenditure_kcal` holds the raw, undamped observed value
+(`result.estimate.rawEstimateKcal`). The *damped* expenditure estimate itself
+(`result.estimate.estimateKcal`, after `AdaptiveEngine.estimateExpenditure`'s
+100kcal/day damping cap) is not stored as its own column -- but it IS
+reconstructible from what's on the row:
+`estimateKcal = previousExpenditureKcal + clamp(observedExpenditureKcal -
+previousExpenditureKcal, ±maximumExpenditureStepKcal)`. This was verified
+numerically during final review, not just asserted.
 
-A future reader trying to understand "why is my target X" from the persisted row alone
-cannot reconstruct it — they would need to solve
-`observed - damping_offset = target - signed_rate_adjustment`, which is not derivable
-from what is persisted. This is a real gap in explainability (CLAUDE.md: "calm
-explainable coaching experience"), and represents a genuine product decision (add a
-column? overload an existing one? accept that a future UI must always read this from
-live state, not from history?) rather than something to be silently invented now.
+The real gap is narrower than "not derivable": reconstruction requires
+knowing which `EngineConfig` (specifically `maximumExpenditureStepKcal`) was
+in force when the row was written, and no persisted row records that. If
+`EngineConfig`'s defaults ever change, historical rows become
+un-re-derivable even though the *formula* for reconstructing them hasn't
+changed -- the same class of gap `docs/TREND_VISUALISATION_GAPS.md` already
+records for `weight_trend_points`' un-versioned `method`. Not fixed here;
+recording it is enough per CLAUDE.md's evidence-discipline convention.
 
 ## Still open: recomputing an already-accepted/declined check-in silently reverts it
 
@@ -147,3 +152,56 @@ explains "someone already resolved this week." A future caller should either cat
 this exception and translate it to a clear message to the user/logs, or
 `CheckInRepository.resolve` could be changed to use `decodeSingleOrNull()` and throw
 an explicit, clearer `error(...)` with a descriptive message instead.
+
+`resolve` in fact has three distinct failure modes a caller needs to handle, not just
+this one: `IllegalStateException` (via `error(...)`) when no row exists for that
+`weekStart`; `IllegalArgumentException` (via `require(...)`) when the row exists but
+isn't `"pending"`; and the `NoSuchElementException` above for a losing compare-and-set.
+A single catch-all `catch (e: Exception)` would mask the difference between "nothing
+to resolve," "already resolved differently," and "someone else resolved it just now" --
+worth three distinct handlers when a UI is built on top of this.
+
+## Still open: `weekStart`/`weekEnd` are row labels only -- `recomputeCheckIn` does not actually compute over that week
+
+`recomputeCheckIn` takes `weekStart`/`weekEnd` as parameters, but nothing about the
+computation itself uses them: `loadRecords()` always assembles history from the
+earliest known date through *today* (never through `weekEnd`), and
+`AdaptiveEngine.estimateExpenditure` internally windows the last 14 days ending at
+`ordered.last().day` -- also always today. `weeklyCheckIn` itself never receives
+`weekStart`/`weekEnd` at all; the repository only uses them as the row's key. This was
+verified concretely during final review: calling `recomputeCheckIn` with a `weekStart`/
+`weekEnd` from six months ago still returns and persists *today's* numbers under that
+old week's label.
+
+Nothing enforces `weekEnd >= weekStart`, either -- a caller can pass an inverted range
+and the row persists with no error from either the repository or the schema.
+
+The realistic failure mode is a future "catch up on missed check-ins" loop that calls
+`recomputeCheckIn` once per skipped week: every one of those rows would get identical
+numbers under different week labels, silently misstating each row's own provenance
+(CLAUDE.md rule #3 -- preserve provenance, don't fabricate it). Before any caller does
+that, either `recomputeCheckIn` needs a real accounting for which week it's computing
+(e.g. bounding the analysis window by `weekEnd`, not always by today), or the parameter
+names need to change to something that doesn't imply the computation is scoped to that
+week at all. Not fixed here -- there are no callers yet, so nothing is broken today,
+but the very first caller that assumes otherwise will get silently wrong data.
+
+## Still open: a recomputed row has no timestamp for when its current numbers were produced
+
+`created_at` is set once, by the database, on the row's first insert -- an `upsert`
+that later replaces the row's contents (via the `onConflict` fix above) does not bump
+it. Combined with `resolved_at` always resetting to `null` on recompute, a row that's
+been recomputed several times carries no timestamp at all indicating when its *current*
+numbers were actually produced. A future "last updated" UI affordance, or an audit
+trail, needs either a `updated_at` column or a separate history table -- neither exists
+today.
+
+## Still open: `previous_expenditure_kcal` is a damping anchor, not "last week's expenditure"
+
+`previousExpenditureKcal` is exactly `ExpenditureRepository.loadRecords()`'s second
+tuple element: on a day where `recomputeExpenditure()` has already run, the last
+*genuine* (non-same-day) persisted estimate's own value; on a user's very first ever
+check-in, `null`. A UI rendering this column as "your previous week's expenditure"
+would be describing it wrong on both counts -- it's not week-scoped (see the
+`weekStart`/`weekEnd` gap above) and it's genuinely absent on a first check-in, which
+a naive UI might render as `0` instead of "not yet available."
