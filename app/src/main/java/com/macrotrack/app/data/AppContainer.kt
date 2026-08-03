@@ -17,4 +17,7 @@ class AppContainer {
     val expenditureRepository: ExpenditureRepository by lazy {
         SupabaseExpenditureRepository(client, dayStatusRepository, logRepository, weightRepository)
     }
+    val checkInRepository: CheckInRepository by lazy {
+        SupabaseCheckInRepository(client, expenditureRepository, weightRepository)
+    }
 }
