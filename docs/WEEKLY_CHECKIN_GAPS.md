@@ -94,6 +94,21 @@ and `decodeSingle()` throws loudly instead of silently losing work.
 JSON objects. This ensures the decode side (`PersistedCheckIn.modules: List<CheckInModuleDto>`)
 and write side can never silently disagree on field names.
 
+### Upsert conflict target: explicit onConflict on the real natural key
+
+`recomputeCheckIn`'s upsert did not set `onConflict`, so postgrest-kt defaulted to
+targeting `weekly_check_ins`'s primary key (`id uuid primary key default
+gen_random_uuid()`). Since `NewCheckIn` never includes `id` (server-generated), that
+default conflict target never actually fires -- a second `recomputeCheckIn` call for
+the same week would instead hit the table's *separate* `unique(user_id, week_start)`
+constraint directly, which throws a raw duplicate-key database error rather than
+updating the existing row. `DayStatusRepository`/`TrendRepository`'s tables don't have
+this problem because their composite natural key (`(user_id, log_date)`/`(user_id,
+trend_date)`) *is* their primary key, so the same unset-`onConflict` pattern happens
+to target the right columns there. `weekly_check_ins`'s surrogate `id` breaks that
+assumption. Fixed by setting `onConflict = "user_id,week_start"` explicitly in the
+upsert call.
+
 ## Still open: damped expenditure estimate not persisted
 
 `proposed_expenditure_kcal` and `proposed_calories` both hold the same calorie target

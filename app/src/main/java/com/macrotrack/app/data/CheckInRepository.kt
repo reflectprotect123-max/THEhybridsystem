@@ -112,7 +112,21 @@ class SupabaseCheckInRepository(
             // pending/held status.
             resolvedAt = null,
         )
-        client.postgrest.from("weekly_check_ins").upsert(payload) { select() }.decodeSingle<PersistedCheckIn>()
+        // weekly_check_ins has a surrogate `id` primary key (never present in
+        // this payload -- it's server-generated) SEPARATE from its actual
+        // natural key, unique(user_id, week_start). Without an explicit
+        // onConflict, postgrest-kt's upsert defaults to targeting the table's
+        // primary key -- since `id` is never in the payload, that "conflict"
+        // never fires, and a second recompute of the same week would hit the
+        // (user_id, week_start) unique constraint directly and throw a raw
+        // duplicate-key error instead of updating the existing row. This is
+        // unlike DayStatusRepository/TrendRepository's tables, where the
+        // composite natural key IS the primary key, so the same unset-onConflict
+        // pattern happens to work there.
+        client.postgrest.from("weekly_check_ins").upsert(payload) {
+            onConflict = "user_id,week_start"
+            select()
+        }.decodeSingle<PersistedCheckIn>()
 
         return result
     }
