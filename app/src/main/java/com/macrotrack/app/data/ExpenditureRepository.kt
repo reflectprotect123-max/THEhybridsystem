@@ -3,6 +3,7 @@ package com.macrotrack.app.data
 import com.macrotrack.app.data.model.NewExpenditureEstimate
 import com.macrotrack.app.data.model.PersistedExpenditureEstimate
 import com.macrotrack.app.domain.AdaptiveEngine
+import com.macrotrack.app.domain.DailyRecord
 import com.macrotrack.app.domain.EngineConfig
 import com.macrotrack.app.domain.ExpenditureEstimate
 import com.macrotrack.app.domain.ExpenditureRecordAssembler
@@ -22,6 +23,7 @@ import java.time.ZoneId
 interface ExpenditureRepository {
     suspend fun getLatestEstimate(): PersistedExpenditureEstimate?
     suspend fun recomputeExpenditure(): ExpenditureEstimate
+    suspend fun loadRecords(): Pair<List<DailyRecord>, Double?>
 }
 
 class SupabaseExpenditureRepository(
@@ -48,6 +50,51 @@ class SupabaseExpenditureRepository(
             order("id", Order.DESCENDING)
             limit(1)
         }.decodeSingleOrNull<PersistedExpenditureEstimate>()
+    }
+
+    override suspend fun loadRecords(): Pair<List<DailyRecord>, Double?> {
+        val zoneId = ZoneId.systemDefault()
+        val earliestBound = LocalDate.of(1970, 1, 1)
+        val today = LocalDate.now(zoneId)
+
+        val previous = getLatestEstimate()
+        // "previous is from today" is only decidable this cheaply because
+        // ExpenditureRecordAssembler.assemble is always called with
+        // end = today (below), so estimateExpenditure's windowEnd is always
+        // today's date whenever a row gets persisted. If that ever changes
+        // (e.g. ending records at the last *logged* day instead), this
+        // comparison silently stops detecting same-day recomputes and the
+        // per-invocation damping-chain bug this whole function exists to
+        // prevent would return undetected.
+        val dampingAnchor = when {
+            previous == null -> null
+            previous.windowEnd == today.toString() -> previous.previousEstimateKcal
+            else -> previous.estimateKcal
+        }
+
+        val statuses = dayStatusRepository.listStatuses(earliestBound)
+        val totals = logRepository.listDailyTotals(earliestBound)
+        val weightEntries = weightRepository.listEntries(Instant.EPOCH)
+        val weightSamples = weightEntries.map { WeightSample(OffsetDateTime.parse(it.measuredAt).toInstant(), it.weightKg) }
+        val weightByDay = WeightTrendCalculator.averageByLocalDay(weightSamples, zoneId)
+
+        val allKnownDates = buildList {
+            statuses.mapTo(this) { LocalDate.parse(it.logDate) }
+            totals.mapTo(this) { LocalDate.parse(it.logDate) }
+            addAll(weightByDay.keys)
+        }
+        val records = if (allKnownDates.isEmpty() || allKnownDates.min().isAfter(today)) {
+            // Either nothing logged at all, or every known date is in the
+            // future (e.g. a future-dated weigh-in) -- there is no real
+            // history to assemble a [start, today] range from. Feeding
+            // ExpenditureRecordAssembler a start after its end would trip
+            // its own require(!end.isBefore(start)) guard.
+            emptyList()
+        } else {
+            ExpenditureRecordAssembler.assemble(statuses, totals, weightByDay, allKnownDates.min(), today)
+        }
+
+        return records to dampingAnchor
     }
 
     /**
@@ -77,47 +124,11 @@ class SupabaseExpenditureRepository(
      */
     override suspend fun recomputeExpenditure(): ExpenditureEstimate {
         val userId = requireUserId()
-        val zoneId = ZoneId.systemDefault()
-        val earliestBound = LocalDate.of(1970, 1, 1)
-        val today = LocalDate.now(zoneId)
+        val today = LocalDate.now(ZoneId.systemDefault())
 
         val previous = getLatestEstimate()
-        // "previous is from today" is only decidable this cheaply because
-        // ExpenditureRecordAssembler.assemble is always called with
-        // end = today (below), so estimateExpenditure's windowEnd is always
-        // today's date whenever a row gets persisted. If that ever changes
-        // (e.g. ending records at the last *logged* day instead), this
-        // comparison silently stops detecting same-day recomputes and the
-        // per-invocation damping-chain bug this whole function exists to
-        // prevent would return undetected.
         val isPreviousFromToday = previous != null && previous.windowEnd == today.toString()
-        val dampingAnchor = when {
-            previous == null -> null
-            isPreviousFromToday -> previous.previousEstimateKcal
-            else -> previous.estimateKcal
-        }
-
-        val statuses = dayStatusRepository.listStatuses(earliestBound)
-        val totals = logRepository.listDailyTotals(earliestBound)
-        val weightEntries = weightRepository.listEntries(Instant.EPOCH)
-        val weightSamples = weightEntries.map { WeightSample(OffsetDateTime.parse(it.measuredAt).toInstant(), it.weightKg) }
-        val weightByDay = WeightTrendCalculator.averageByLocalDay(weightSamples, zoneId)
-
-        val allKnownDates = buildList {
-            statuses.mapTo(this) { LocalDate.parse(it.logDate) }
-            totals.mapTo(this) { LocalDate.parse(it.logDate) }
-            addAll(weightByDay.keys)
-        }
-        val records = if (allKnownDates.isEmpty() || allKnownDates.min().isAfter(today)) {
-            // Either nothing logged at all, or every known date is in the
-            // future (e.g. a future-dated weigh-in) -- there is no real
-            // history to assemble a [start, today] range from. Feeding
-            // ExpenditureRecordAssembler a start after its end would trip
-            // its own require(!end.isBefore(start)) guard.
-            emptyList()
-        } else {
-            ExpenditureRecordAssembler.assemble(statuses, totals, weightByDay, allKnownDates.min(), today)
-        }
+        val (records, dampingAnchor) = loadRecords()
 
         val estimate = AdaptiveEngine.estimateExpenditure(records, dampingAnchor, EngineConfig())
 
