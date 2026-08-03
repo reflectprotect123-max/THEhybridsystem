@@ -8,6 +8,7 @@ import com.macrotrack.app.data.FoodRepository
 import com.macrotrack.app.data.RecentFoodRepository
 import com.macrotrack.app.data.RecipeRepository
 import com.macrotrack.app.data.model.EntryKind
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -53,6 +54,8 @@ class FoodSearchViewModel(
                     }
                 }
                 _uiState.value = _uiState.value.copy(recent = recent)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(errorMessage = e.message ?: "Couldn't load recent foods")
             }
@@ -79,6 +82,8 @@ class FoodSearchViewModel(
                     .filter { it.name.contains(query, ignoreCase = true) }
                     .map { FoodSearchResult(EntryKind.RECIPE, it.id, it.name) }
                 _uiState.value = _uiState.value.copy(isLoading = false, results = foods + customFoods + recipes)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(isLoading = false, errorMessage = e.message ?: "Search failed")
             }

@@ -59,3 +59,11 @@ fun FoodSearchScreen(viewModel: FoodSearchViewModel, onResultSelected: (entryKin
         }
     }
 }
+
+// No @Preview here. FoodSearchViewModel takes five repository interfaces
+// (FoodRepository, CustomFoodRepository, RecipeRepository, FavoritesRepository,
+// RecentFoodRepository) and there's no fake/mock repository infrastructure in this codebase.
+// Hand-writing five no-op fakes without a compiler to check them against is a meaningfully
+// larger risk of a silently-broken preview than for Auth/Daily Log (one and three repositories,
+// respectively, which do have previews). Deferred until either a shared fake-repository layer
+// exists or this can be verified on a real machine with Gradle/AGP.

@@ -11,6 +11,7 @@ import com.macrotrack.app.data.model.EntryKind
 import com.macrotrack.app.data.model.Food
 import com.macrotrack.app.data.model.Meal
 import com.macrotrack.app.data.model.Recipe
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -75,6 +76,8 @@ class AddLogEntryViewModel(
                     }
                     else -> error("Unknown entryKind: $entryKind")
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(isLoading = false, errorMessage = e.message ?: "Couldn't load this item")
             }
@@ -107,6 +110,8 @@ class AddLogEntryViewModel(
                     else -> error("Nothing loaded to save")
                 }
                 _uiState.value = _uiState.value.copy(isSaving = false, saved = true)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(isSaving = false, errorMessage = e.message ?: "Couldn't save this entry")
             }

@@ -1,11 +1,13 @@
 package com.macrotrack.app.ui.search
 
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
@@ -47,7 +49,10 @@ fun AddLogEntryScreen(viewModel: AddLogEntryViewModel, onSaved: () -> Unit, onCa
         )
 
         Text("Meal", style = MaterialTheme.typography.titleMedium)
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(
+            modifier = Modifier.horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
             MEAL_OPTIONS.forEach { meal ->
                 FilterChip(
                     selected = uiState.meal == meal,
@@ -71,3 +76,11 @@ fun AddLogEntryScreen(viewModel: AddLogEntryViewModel, onSaved: () -> Unit, onCa
         }
     }
 }
+
+// No @Preview here. AddLogEntryViewModel takes four repository interfaces (FoodRepository,
+// CustomFoodRepository, RecipeRepository, LogRepository) plus entryKind/id constructor args, and
+// there's no fake/mock repository infrastructure in this codebase. Hand-writing four no-op fakes
+// (LogRepository alone has eight methods) without a compiler to check them against is a
+// meaningfully larger risk of a silently-broken preview than for Auth/Daily Log (one and three
+// repositories, respectively, which do have previews). Deferred until either a shared
+// fake-repository layer exists or this can be verified on a real machine with Gradle/AGP.

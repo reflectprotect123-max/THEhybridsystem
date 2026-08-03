@@ -3,6 +3,7 @@ package com.macrotrack.app.ui.auth
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.macrotrack.app.data.AuthRepository
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -24,6 +25,8 @@ class AuthViewModel(private val authRepository: AuthRepository) : ViewModel() {
             try {
                 authRepository.signIn(email, password)
                 _uiState.value = AuthUiState(isSubmitting = false)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 _uiState.value = AuthUiState(isSubmitting = false, errorMessage = e.message ?: "Sign in failed")
             }
@@ -36,6 +39,8 @@ class AuthViewModel(private val authRepository: AuthRepository) : ViewModel() {
             try {
                 authRepository.signUp(email, password)
                 _uiState.value = AuthUiState(isSubmitting = false)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 _uiState.value = AuthUiState(isSubmitting = false, errorMessage = e.message ?: "Sign up failed")
             }

@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -19,7 +20,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import com.macrotrack.app.data.AuthRepository
+import com.macrotrack.app.ui.theme.MacroTrackTheme
+import io.github.jan.supabase.auth.status.SessionStatus
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 
 @Composable
 fun AuthScreen(viewModel: AuthViewModel) {
@@ -68,5 +75,26 @@ fun AuthScreen(viewModel: AuthViewModel) {
         TextButton(onClick = { isSignUpMode = !isSignUpMode }) {
             Text(if (isSignUpMode) "Already have an account? Sign in" else "New here? Create an account")
         }
+    }
+}
+
+/**
+ * Fake [AuthRepository] used only by [AuthScreenPreview]. `AuthRepository` is small enough
+ * (one property, three suspend functions) that a hand-written no-op fake is low-risk without a
+ * compiler to check it -- unlike the multi-repository ViewModels in Food Search / Add Log Entry,
+ * which don't get a full-screen preview (see the comment in those files).
+ */
+private class PreviewAuthRepository : AuthRepository {
+    override val sessionStatus: StateFlow<SessionStatus> = MutableStateFlow(SessionStatus.NotAuthenticated())
+    override suspend fun signUp(email: String, password: String) = Unit
+    override suspend fun signIn(email: String, password: String) = Unit
+    override suspend fun signOut() = Unit
+}
+
+@Preview(showBackground = true)
+@Composable
+private fun AuthScreenPreview() {
+    MacroTrackTheme {
+        AuthScreen(viewModel = AuthViewModel(PreviewAuthRepository()))
     }
 }
