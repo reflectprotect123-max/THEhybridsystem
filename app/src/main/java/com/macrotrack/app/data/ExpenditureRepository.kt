@@ -122,7 +122,7 @@ class SupabaseExpenditureRepository(
                 client.postgrest.from("expenditure_estimates").delete {
                     filter {
                         eq("user_id", userId)
-                        eq("id", previous!!.id)
+                        eq("id", previous.id)
                     }
                 }
             }
