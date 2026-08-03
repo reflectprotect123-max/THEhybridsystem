@@ -15,9 +15,11 @@ interface FavoritesRepository {
 
 class SupabaseFavoritesRepository(private val client: SupabaseClient) : FavoritesRepository {
 
-    private fun requireUserId(): String =
-        client.auth.currentUserOrNull()?.id
+    private suspend fun requireUserId(): String {
+        client.auth.awaitInitialization()
+        return client.auth.currentUserOrNull()?.id
             ?: error("FavoritesRepository used before a user session exists.")
+    }
 
     override suspend fun list(): List<FoodFavorite> {
         val userId = requireUserId()

@@ -15,9 +15,11 @@ interface CustomFoodRepository {
 
 class SupabaseCustomFoodRepository(private val client: SupabaseClient) : CustomFoodRepository {
 
-    private fun requireUserId(): String =
-        client.auth.currentUserOrNull()?.id
+    private suspend fun requireUserId(): String {
+        client.auth.awaitInitialization()
+        return client.auth.currentUserOrNull()?.id
             ?: error("CustomFoodRepository used before a user session exists.")
+    }
 
     override suspend fun list(): List<CustomFood> {
         val userId = requireUserId()

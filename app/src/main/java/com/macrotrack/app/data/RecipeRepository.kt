@@ -18,9 +18,11 @@ interface RecipeRepository {
 
 class SupabaseRecipeRepository(private val client: SupabaseClient) : RecipeRepository {
 
-    private fun requireUserId(): String =
-        client.auth.currentUserOrNull()?.id
+    private suspend fun requireUserId(): String {
+        client.auth.awaitInitialization()
+        return client.auth.currentUserOrNull()?.id
             ?: error("RecipeRepository used before a user session exists.")
+    }
 
     override suspend fun list(): List<Recipe> {
         val userId = requireUserId()

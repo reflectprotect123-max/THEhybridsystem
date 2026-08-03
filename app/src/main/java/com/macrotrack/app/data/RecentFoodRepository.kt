@@ -16,11 +16,20 @@ interface RecentFoodRepository {
 
 class SupabaseRecentFoodRepository(private val client: SupabaseClient) : RecentFoodRepository {
 
-    override suspend fun getRecent(limit: Int): List<RecentLogReference> {
-        val userId = client.auth.currentUserOrNull()?.id
+    private suspend fun requireUserId(): String {
+        client.auth.awaitInitialization()
+        return client.auth.currentUserOrNull()?.id
             ?: error("RecentFoodRepository used before a user session exists.")
+    }
+
+    override suspend fun getRecent(limit: Int): List<RecentLogReference> {
+        val userId = requireUserId()
         val rows = client.postgrest.from("food_log_entries").select {
-            filter { eq("user_id", userId) }
+            filter {
+                eq("user_id", userId)
+                exact("deleted_at", null)
+                neq("entry_kind", "quick_add")
+            }
             order("created_at", Order.DESCENDING)
             limit(FETCH_BUFFER)
         }.decodeList<RecentLogEntryRow>()
