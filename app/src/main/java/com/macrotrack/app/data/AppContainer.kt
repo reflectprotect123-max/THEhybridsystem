@@ -13,4 +13,5 @@ class AppContainer {
     val logRepository: LogRepository by lazy { SupabaseLogRepository(client, foodRepository, recipeRepository, recipeMacroResolver) }
     val dayStatusRepository: DayStatusRepository by lazy { SupabaseDayStatusRepository(client) }
     val weightRepository: WeightRepository by lazy { SupabaseWeightRepository(client) }
+    val trendRepository: TrendRepository by lazy { SupabaseTrendRepository(client, weightRepository) }
 }
