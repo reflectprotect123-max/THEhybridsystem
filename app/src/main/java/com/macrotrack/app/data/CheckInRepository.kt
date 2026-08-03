@@ -9,10 +9,9 @@ import com.macrotrack.app.domain.weeklyCheckIn
 import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.postgrest.postgrest
-import kotlinx.serialization.json.JsonArray
-import kotlinx.serialization.json.buildJsonArray
-import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.put
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.encodeToJsonElement
+import kotlinx.serialization.json.jsonArray
 import java.time.Instant
 import java.time.LocalDate
 import java.time.OffsetDateTime
@@ -82,21 +81,24 @@ class SupabaseCheckInRepository(
             "ready" -> "pending"
             else -> result.status // "held" already matches the schema's vocabulary
         }
-        val modules = buildJsonArray {
-            result.modules.forEach { module ->
-                add(buildJsonObject {
-                    put("key", module.key)
-                    put("action", module.action)
-                })
-            }
-        }
+        // Single-sourced through CheckInModuleDto (rather than hand-building
+        // {"key":...,"action":...} JSON objects) so the decode side
+        // (PersistedCheckIn.modules: List<CheckInModuleDto>) and this write
+        // side can never silently disagree on field names.
+        val modules = Json.encodeToJsonElement(result.modules.map { CheckInModuleDto(key = it.key, action = it.action) }).jsonArray
         val payload = NewCheckIn(
             userId = userId,
             weekStart = weekStart.toString(),
             weekEnd = weekEnd.toString(),
             status = status,
             previousExpenditureKcal = previousExpenditureKcal,
-            observedExpenditureKcal = result.estimate.estimateKcal,
+            // rawEstimateKcal, not estimateKcal -- on a holding result,
+            // estimateKcal is the CARRIED-FORWARD anchor (see
+            // AdaptiveEngine.estimateExpenditure's holding branches), not
+            // anything actually observed this week. rawEstimateKcal is null
+            // on exactly the same paths where there is nothing real to
+            // report, which is what "observed" should mean here.
+            observedExpenditureKcal = result.estimate.rawEstimateKcal,
             proposedExpenditureKcal = result.targets?.calories,
             proposedCalories = result.targets?.calories,
             proposedProteinG = result.targets?.proteinG,
@@ -104,6 +106,11 @@ class SupabaseCheckInRepository(
             proposedFatG = result.targets?.fatG,
             modules = modules,
             explanation = result.explanation,
+            // Explicitly null (not omitted) -- a week that was previously
+            // accepted/declined and is now being recomputed must have its
+            // resolved_at cleared, not left stamped next to a fresh
+            // pending/held status.
+            resolvedAt = null,
         )
         client.postgrest.from("weekly_check_ins").upsert(payload) { select() }.decodeSingle<PersistedCheckIn>()
 
@@ -124,6 +131,12 @@ class SupabaseCheckInRepository(
             filter {
                 eq("user_id", userId)
                 eq("week_start", weekStart.toString())
+                // Compare-and-set: without this, two concurrent resolves (or
+                // a stale UI) could both pass the require() above and the
+                // second would silently overwrite the first's outcome. A
+                // loser here matches zero rows and decodeSingle throws
+                // loudly instead.
+                eq("status", "pending")
             }
             select()
         }.decodeSingle<PersistedCheckIn>()

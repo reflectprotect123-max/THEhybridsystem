@@ -1,7 +1,6 @@
 package com.macrotrack.app.data.model
 
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -83,7 +82,7 @@ class CheckInModelsTest {
     }
 
     @Test
-    fun encodesANewCheckInPayloadOmittingIdAndCreatedAtAndResolvedAt() {
+    fun encodesANewCheckInPayloadOmittingIdAndCreatedAtAndProgramId() {
         val payload = NewCheckIn(
             userId = "user-1",
             weekStart = "2026-07-27",
@@ -100,6 +99,7 @@ class CheckInModelsTest {
                 add(buildJsonObject { put("key", "weigh_in"); put("action", "add a weigh-in") })
             },
             explanation = "The next target uses observed expenditure and the signed goal rate.",
+            resolvedAt = null,
         )
 
         val encoded = json.encodeToString(NewCheckIn.serializer(), payload)
@@ -112,7 +112,42 @@ class CheckInModelsTest {
         assertEquals(true, encoded.contains("\"weigh_in\""))
         assertEquals(false, encoded.contains("\"id\""))
         assertEquals(false, encoded.contains("\"created_at\""))
-        assertEquals(false, encoded.contains("\"resolved_at\""))
+        // program_id has no property on NewCheckIn at all (always null in
+        // this slice), so it can never appear regardless of encodeDefaults.
+        assertEquals(false, encoded.contains("\"program_id\""))
+    }
+
+    @Test
+    fun encodesANewCheckInPayloadsNullableFieldsExplicitlyEvenWhenNull() {
+        // This is the field this model exists to get right: previousExpenditureKcal,
+        // observedExpenditureKcal, the five proposed_* fields, and resolvedAt have
+        // NO default value, so kotlinx.serialization's encodeDefaults=false has
+        // nothing to omit -- a null here must still be transmitted as an explicit
+        // JSON null, so an upsert can clear a stale prior value on this row.
+        val payload = NewCheckIn(
+            userId = "user-1",
+            weekStart = "2026-07-20",
+            weekEnd = "2026-07-26",
+            status = "held",
+            previousExpenditureKcal = 2400.0,
+            observedExpenditureKcal = null,
+            proposedExpenditureKcal = null,
+            proposedCalories = null,
+            proposedProteinG = null,
+            proposedCarbsG = null,
+            proposedFatG = null,
+            modules = buildJsonArray {
+                add(buildJsonObject { put("key", "weigh_in"); put("action", "add a weigh-in") })
+            },
+            explanation = "More history is required before updating expenditure.",
+            resolvedAt = null,
+        )
+
+        val encoded = json.encodeToString(NewCheckIn.serializer(), payload)
+
+        assertEquals(true, encoded.contains("\"observed_expenditure_kcal\":null"))
+        assertEquals(true, encoded.contains("\"proposed_calories\":null"))
+        assertEquals(true, encoded.contains("\"resolved_at\":null"))
     }
 
     @Test
