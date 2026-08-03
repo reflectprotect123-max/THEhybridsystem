@@ -8,6 +8,7 @@ import com.macrotrack.app.data.FoodRepository
 import com.macrotrack.app.data.RecentFoodRepository
 import com.macrotrack.app.data.RecipeRepository
 import com.macrotrack.app.data.model.EntryKind
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -34,6 +35,8 @@ class FoodSearchViewModel(
     private val _uiState = MutableStateFlow(FoodSearchUiState())
     val uiState: StateFlow<FoodSearchUiState> = _uiState.asStateFlow()
 
+    private var searchJob: Job? = null
+
     init {
         loadRecent()
     }
@@ -58,12 +61,13 @@ class FoodSearchViewModel(
 
     fun onQueryChanged(query: String) {
         _uiState.value = _uiState.value.copy(query = query)
+        searchJob?.cancel()
         if (query.isBlank()) {
             _uiState.value = _uiState.value.copy(results = emptyList(), isLoading = false)
             return
         }
         _uiState.value = _uiState.value.copy(isLoading = true, errorMessage = null)
-        viewModelScope.launch {
+        searchJob = viewModelScope.launch {
             try {
                 val foods = foodRepository.search(query).map {
                     FoodSearchResult(EntryKind.FOOD, it.id, it.name, it.brand)
