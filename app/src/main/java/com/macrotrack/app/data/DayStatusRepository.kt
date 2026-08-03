@@ -1,6 +1,7 @@
 package com.macrotrack.app.data
 
 import com.macrotrack.app.data.model.DailyLogStatus
+import com.macrotrack.app.data.model.DayStatus
 import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.postgrest.postgrest
@@ -31,8 +32,15 @@ class SupabaseDayStatusRepository(private val client: SupabaseClient) : DayStatu
     }
 
     override suspend fun setStatus(date: LocalDate, status: String, note: String?): DailyLogStatus {
+        require(status in VALID_STATUSES) {
+            "status must be one of $VALID_STATUSES, got '$status'"
+        }
         val userId = requireUserId()
         val payload = DailyLogStatus(userId = userId, logDate = date.toString(), status = status, note = note)
         return client.postgrest.from("daily_log_status").upsert(payload) { select() }.decodeSingle<DailyLogStatus>()
+    }
+
+    companion object {
+        private val VALID_STATUSES = setOf(DayStatus.COMPLETE, DayStatus.PARTIAL, DayStatus.FASTED, DayStatus.UNLOGGED)
     }
 }
