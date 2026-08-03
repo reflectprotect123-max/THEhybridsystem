@@ -8,4 +8,8 @@ class AppContainer {
     val recipeRepository: RecipeRepository by lazy { SupabaseRecipeRepository(client) }
     val favoritesRepository: FavoritesRepository by lazy { SupabaseFavoritesRepository(client) }
     val recentFoodRepository: RecentFoodRepository by lazy { SupabaseRecentFoodRepository(client) }
+
+    private val recipeMacroResolver by lazy { RecipeMacroResolver(recipeRepository, foodRepository, customFoodRepository) }
+    val logRepository: LogRepository by lazy { SupabaseLogRepository(client, foodRepository, recipeRepository, recipeMacroResolver) }
+    val dayStatusRepository: DayStatusRepository by lazy { SupabaseDayStatusRepository(client) }
 }
