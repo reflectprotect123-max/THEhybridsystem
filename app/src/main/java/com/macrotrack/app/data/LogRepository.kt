@@ -51,15 +51,21 @@ class SupabaseLogRepository(
         }.decodeList<FoodLogEntry>()
     }
 
+    /**
+     * Returns the daily nutrition totals for a given date, or null if the day is unlogged.
+     * Note: the underlying view may emit a row with entryCount=0 if all entries for a date were deleted;
+     * we treat this identically to "no row" so a fully-deleted day never reads as a confident zero.
+     */
     override suspend fun getDailyTotals(date: LocalDate): DailyTotals? {
         val userId = requireUserId()
-        return client.postgrest.from("daily_nutrition_totals").select {
+        val totals = client.postgrest.from("daily_nutrition_totals").select {
             filter {
                 eq("user_id", userId)
                 eq("log_date", date.toString())
             }
             limit(1)
         }.decodeSingleOrNull<DailyTotals>()
+        return totals?.takeIf { it.entryCount > 0 }
     }
 
     override suspend fun logFood(date: LocalDate, food: Food, quantity: Double, unit: String, meal: String, notes: String?): FoodLogEntry {
