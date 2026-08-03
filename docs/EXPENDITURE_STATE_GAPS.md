@@ -148,7 +148,9 @@ a new discovery, just a new place it bites.
 **Resolved** by `docs/superpowers/plans/2026-08-03-weight-coach-screens.md`:
 `CoachScreen`/`CoachViewModel` is now the first caller. It calls
 `ExpenditureRepository.recomputeExpenditure()` on every screen resume
-(`ON_RESUME`). Left below for historical context.
+(`ON_RESUME`), though a 60-second throttle (see CoachViewModel.kt) skips the
+actual recompute if the last successful refresh was recent, to avoid redundant
+writes on rapid tab-switching or rotation. Left below for historical context.
 
 Like `TrendRepository.recomputeTrend`, `ExpenditureRepository.recomputeExpenditure`
 is entirely caller-driven -- nothing in this slice calls it. Whoever wires up

@@ -107,6 +107,8 @@ class CoachViewModel(
             } catch (e: IllegalStateException) {
                 // recomputeCheckIn requires at least one logged weigh-in -- a real, expected
                 // precondition failure (docs/WEEKLY_CHECKIN_GAPS.md), not an error to display.
+                // Reset throttle to ensure refresh() re-runs when user returns after logging a weigh-in.
+                lastRefreshedAt = null
                 _uiState.value = _uiState.value.copy(isCheckingIn = false, hasWeighIn = false)
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(isCheckingIn = false, errorMessage = e.message ?: "Couldn't check in")
@@ -134,8 +136,9 @@ class CoachViewModel(
                 _uiState.value = _uiState.value.copy(isResolving = false, errorMessage = "This week's check-in was already resolved.")
                 refreshCheckInAfterFailedResolve()
             } catch (e: IllegalStateException) {
-                // CheckInRepository.resolve's error(...) when no row exists for this weekStart.
-                _uiState.value = _uiState.value.copy(isResolving = false, errorMessage = "No check-in found for this week.")
+                // CheckInRepository.resolve's error(...) when no row exists for this weekStart,
+                // or a session-loss edge case (requireUserId() failure). Use a neutral message.
+                _uiState.value = _uiState.value.copy(isResolving = false, errorMessage = "Couldn't resolve check-in — please refresh your session if needed.")
                 refreshCheckInAfterFailedResolve()
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(isResolving = false, errorMessage = e.message ?: "Couldn't resolve check-in")

@@ -136,8 +136,10 @@ have to rediscover that the only way to alter it is editing
 `TrendRepository.recomputeTrend(since)` on every screen resume (`ON_RESUME`),
 with `since` bounded to a 90-day window for what's displayed — though the
 recompute itself internally scans full history regardless of that window,
-per `recomputeTrend`'s own existing behavior described below. Left below for
-historical context.
+per `recomputeTrend`'s own existing behavior described below. A 60-second
+throttle (see WeightViewModel.kt) skips the actual recompute if the last
+successful refresh was recent, to avoid redundant writes on rapid tab-switching
+or rotation. Left below for historical context.
 
 `recomputeTrend` is entirely caller-driven — nothing in this slice schedules
 it. Today, nothing calls it at all (no UI/ViewModel exists yet). Whoever
