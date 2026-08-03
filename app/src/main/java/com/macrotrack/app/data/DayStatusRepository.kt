@@ -5,11 +5,13 @@ import com.macrotrack.app.data.model.DayStatus
 import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.postgrest.postgrest
+import io.github.jan.supabase.postgrest.query.Order
 import java.time.LocalDate
 
 interface DayStatusRepository {
     suspend fun getStatus(date: LocalDate): DailyLogStatus?
     suspend fun setStatus(date: LocalDate, status: String, note: String? = null): DailyLogStatus
+    suspend fun listStatuses(since: LocalDate): List<DailyLogStatus>
 }
 
 class SupabaseDayStatusRepository(private val client: SupabaseClient) : DayStatusRepository {
@@ -38,6 +40,17 @@ class SupabaseDayStatusRepository(private val client: SupabaseClient) : DayStatu
         val userId = requireUserId()
         val payload = DailyLogStatus(userId = userId, logDate = date.toString(), status = status, note = note)
         return client.postgrest.from("daily_log_status").upsert(payload) { select() }.decodeSingle<DailyLogStatus>()
+    }
+
+    override suspend fun listStatuses(since: LocalDate): List<DailyLogStatus> {
+        val userId = requireUserId()
+        return client.postgrest.from("daily_log_status").select {
+            filter {
+                eq("user_id", userId)
+                gte("log_date", since.toString())
+            }
+            order("log_date", Order.ASCENDING)
+        }.decodeList<DailyLogStatus>()
     }
 
     companion object {
