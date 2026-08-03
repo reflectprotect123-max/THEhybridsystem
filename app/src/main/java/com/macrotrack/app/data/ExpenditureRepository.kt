@@ -12,6 +12,7 @@ import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.postgrest.postgrest
 import io.github.jan.supabase.postgrest.query.Order
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import java.time.Instant
@@ -42,6 +43,7 @@ class SupabaseExpenditureRepository(
         return client.postgrest.from("expenditure_estimates").select {
             filter { eq("user_id", userId) }
             order("created_at", Order.DESCENDING)
+            order("id", Order.DESCENDING)
             limit(1)
         }.decodeSingleOrNull<PersistedExpenditureEstimate>()
     }
@@ -52,30 +54,49 @@ class SupabaseExpenditureRepository(
      * (see this plan's Global Constraints for why that case is skipped
      * rather than given a sentinel). Always returns the engine's result,
      * whether or not a row was written.
+     *
+     * `AdaptiveEngine.estimateExpenditure` applies at most one damping step
+     * per call, but nothing about that call is tied to elapsed time --
+     * calling this repeatedly with unchanged data (e.g. once per app open)
+     * would otherwise chain a fresh damping step onto the previous call's
+     * result every time, silently defeating
+     * docs/ADAPTIVE_ENGINE_CONTRACT.md's "limit the weekly update step" cap
+     * within a single day. If the latest persisted estimate's window
+     * already reaches today, there is nothing new to compute -- that
+     * persisted estimate is returned unchanged instead of taking another
+     * step toward the raw value.
      */
     override suspend fun recomputeExpenditure(): ExpenditureEstimate {
         val userId = requireUserId()
         val zoneId = ZoneId.systemDefault()
         val earliestBound = LocalDate.of(1970, 1, 1)
+        val today = LocalDate.now(zoneId)
 
         val previous = getLatestEstimate()
+        if (previous != null && previous.windowEnd == today.toString()) {
+            return previous.toExpenditureEstimate()
+        }
+
         val statuses = dayStatusRepository.listStatuses(earliestBound)
         val totals = logRepository.listDailyTotals(earliestBound)
         val weightEntries = weightRepository.listEntries(Instant.EPOCH)
         val weightSamples = weightEntries.map { WeightSample(OffsetDateTime.parse(it.measuredAt).toInstant(), it.weightKg) }
         val weightByDay = WeightTrendCalculator.averageByLocalDay(weightSamples, zoneId)
 
-        val earliestDates = buildList {
+        val allKnownDates = buildList {
             statuses.mapTo(this) { LocalDate.parse(it.logDate) }
             totals.mapTo(this) { LocalDate.parse(it.logDate) }
             addAll(weightByDay.keys)
         }
-        val records = if (earliestDates.isEmpty()) {
+        val records = if (allKnownDates.isEmpty() || allKnownDates.min().isAfter(today)) {
+            // Either nothing logged at all, or every known date is in the
+            // future (e.g. a future-dated weigh-in) -- there is no real
+            // history to assemble a [start, today] range from. Feeding
+            // ExpenditureRecordAssembler a start after its end would trip
+            // its own require(!end.isBefore(start)) guard.
             emptyList()
         } else {
-            val start = earliestDates.min()
-            val end = LocalDate.now(zoneId)
-            ExpenditureRecordAssembler.assemble(statuses, totals, weightByDay, start, end)
+            ExpenditureRecordAssembler.assemble(statuses, totals, weightByDay, allKnownDates.min(), today)
         }
 
         val estimate = AdaptiveEngine.estimateExpenditure(records, previous?.estimateKcal, EngineConfig())
@@ -103,4 +124,19 @@ class SupabaseExpenditureRepository(
 
         return estimate
     }
+
+    /** Reconstructs the domain result from a persisted row, for the already-computed-today short-circuit above. */
+    private fun PersistedExpenditureEstimate.toExpenditureEstimate(): ExpenditureEstimate = ExpenditureEstimate(
+        state = state,
+        confidence = confidence,
+        estimateKcal = estimateKcal,
+        rawEstimateKcal = rawEstimateKcal,
+        previousEstimateKcal = previousEstimateKcal,
+        trendSlopeKgPerWeek = trendSlopeKgPerWeek,
+        nutritionDays = nutritionDays,
+        weightDays = weightDays,
+        windowStart = windowStart,
+        windowEnd = windowEnd,
+        explanation = (inputs["explanation"] as? JsonPrimitive)?.content ?: "",
+    )
 }
