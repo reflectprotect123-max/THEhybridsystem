@@ -2,6 +2,7 @@ package com.macrotrack.app.data
 
 class AppContainer {
     private val client by lazy { SupabaseClientProvider.create() }
+    val authRepository: AuthRepository by lazy { SupabaseAuthRepository(client) }
 
     val foodRepository: FoodRepository by lazy { SupabaseFoodRepository(client) }
     val customFoodRepository: CustomFoodRepository by lazy { SupabaseCustomFoodRepository(client) }
