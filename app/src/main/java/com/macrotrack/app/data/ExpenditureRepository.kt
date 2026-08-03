@@ -12,7 +12,6 @@ import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.postgrest.postgrest
 import io.github.jan.supabase.postgrest.query.Order
-import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import java.time.Instant
@@ -56,15 +55,22 @@ class SupabaseExpenditureRepository(
      * whether or not a row was written.
      *
      * `AdaptiveEngine.estimateExpenditure` applies at most one damping step
-     * per call, but nothing about that call is tied to elapsed time --
-     * calling this repeatedly with unchanged data (e.g. once per app open)
-     * would otherwise chain a fresh damping step onto the previous call's
-     * result every time, silently defeating
-     * docs/ADAPTIVE_ENGINE_CONTRACT.md's "limit the weekly update step" cap
-     * within a single day. If the latest persisted estimate's window
-     * already reaches today, there is nothing new to compute -- that
-     * persisted estimate is returned unchanged instead of taking another
-     * step toward the raw value.
+     * per call, but nothing about that call is tied to elapsed time. Calling
+     * this repeatedly in one day (e.g. once per app open, or again after the
+     * user fixes a logging gap) must not chain a fresh damping step onto the
+     * previous call's already-damped output each time -- that would drift
+     * toward the raw value purely from call count, defeating
+     * docs/ADAPTIVE_ENGINE_CONTRACT.md's damping cap. Nor can same-day calls
+     * simply be skipped: a `holding` result telling the user to fix a
+     * logging gap must actually re-evaluate once they do, the same day
+     * (CLAUDE.md: "missing-data holding is a valid state" -- it must react
+     * when the missing data arrives, not freeze until midnight).
+     *
+     * So every call always recomputes, but the damping is always anchored to
+     * the last GENUINE (non-same-day) estimate, never to a same-day row's
+     * own already-damped output -- and a same-day row is replaced in place
+     * rather than accumulated, since it represents "today's estimate", not
+     * a new historical entry.
      */
     override suspend fun recomputeExpenditure(): ExpenditureEstimate {
         val userId = requireUserId()
@@ -73,8 +79,11 @@ class SupabaseExpenditureRepository(
         val today = LocalDate.now(zoneId)
 
         val previous = getLatestEstimate()
-        if (previous != null && previous.windowEnd == today.toString()) {
-            return previous.toExpenditureEstimate()
+        val isPreviousFromToday = previous != null && previous.windowEnd == today.toString()
+        val dampingAnchor = when {
+            previous == null -> null
+            isPreviousFromToday -> previous.previousEstimateKcal
+            else -> previous.estimateKcal
         }
 
         val statuses = dayStatusRepository.listStatuses(earliestBound)
@@ -99,12 +108,24 @@ class SupabaseExpenditureRepository(
             ExpenditureRecordAssembler.assemble(statuses, totals, weightByDay, allKnownDates.min(), today)
         }
 
-        val estimate = AdaptiveEngine.estimateExpenditure(records, previous?.estimateKcal, EngineConfig())
+        val estimate = AdaptiveEngine.estimateExpenditure(records, dampingAnchor, EngineConfig())
 
         val estimateKcal = estimate.estimateKcal
         val windowStart = estimate.windowStart
         val windowEnd = estimate.windowEnd
         if (estimateKcal != null && windowStart != null && windowEnd != null) {
+            if (isPreviousFromToday) {
+                // Replace today's row rather than accumulate a second one --
+                // it represents "today's estimate", re-evaluated, not a new
+                // historical entry. previous is non-null whenever
+                // isPreviousFromToday is true.
+                client.postgrest.from("expenditure_estimates").delete {
+                    filter {
+                        eq("user_id", userId)
+                        eq("id", previous!!.id)
+                    }
+                }
+            }
             val payload = NewExpenditureEstimate(
                 userId = userId,
                 windowStart = windowStart,
@@ -124,19 +145,4 @@ class SupabaseExpenditureRepository(
 
         return estimate
     }
-
-    /** Reconstructs the domain result from a persisted row, for the already-computed-today short-circuit above. */
-    private fun PersistedExpenditureEstimate.toExpenditureEstimate(): ExpenditureEstimate = ExpenditureEstimate(
-        state = state,
-        confidence = confidence,
-        estimateKcal = estimateKcal,
-        rawEstimateKcal = rawEstimateKcal,
-        previousEstimateKcal = previousEstimateKcal,
-        trendSlopeKgPerWeek = trendSlopeKgPerWeek,
-        nutritionDays = nutritionDays,
-        weightDays = weightDays,
-        windowStart = windowStart,
-        windowEnd = windowEnd,
-        explanation = (inputs["explanation"] as? JsonPrimitive)?.content ?: "",
-    )
 }
