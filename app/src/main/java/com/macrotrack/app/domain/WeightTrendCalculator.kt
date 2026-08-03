@@ -17,6 +17,15 @@ data class WeightSample(val measuredAt: Instant, val weightKg: Double)
  */
 object WeightTrendCalculator {
 
+    /**
+     * Groups multiple weigh-ins on the same local day and combines them by averaging.
+     * This is the standard coaching convention for same-day duplicates.
+     */
+    internal fun averageByLocalDay(samples: List<WeightSample>, zoneId: ZoneId): Map<LocalDate, Double> =
+        samples
+            .groupBy { it.measuredAt.atZone(zoneId).toLocalDate() }
+            .mapValues { (_, dayEntries) -> dayEntries.map { it.weightKg }.average() }
+
     fun dailyTrend(
         samples: List<WeightSample>,
         start: LocalDate,
@@ -25,9 +34,7 @@ object WeightTrendCalculator {
         alpha: Double = 0.20,
     ): List<Pair<LocalDate, Double?>> {
         require(!end.isBefore(start)) { "end must not be before start, got start=$start end=$end" }
-        val averagedByDay = samples
-            .groupBy { it.measuredAt.atZone(zoneId).toLocalDate() }
-            .mapValues { (_, dayEntries) -> dayEntries.map { it.weightKg }.average() }
+        val averagedByDay = averageByLocalDay(samples, zoneId)
 
         val days = generateSequence(start) { it.plusDays(1) }.takeWhile { !it.isAfter(end) }.toList()
         val denseSeries = days.map { averagedByDay[it] }

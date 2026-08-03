@@ -2,6 +2,7 @@ package com.macrotrack.app.domain
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.fail
 import org.junit.Test
 import java.time.Instant
 import java.time.LocalDate
@@ -9,6 +10,54 @@ import java.time.ZoneOffset
 
 class WeightTrendCalculatorTest {
     private val zone = ZoneOffset.UTC
+
+    @Test
+    fun averageByLocalDayCombiniesSameDayDuplicatesByAveraging() {
+        val samples = listOf(
+            WeightSample(Instant.parse("2026-08-01T06:00:00Z"), 80.0),
+            WeightSample(Instant.parse("2026-08-01T18:00:00Z"), 82.0),
+        )
+
+        val result = WeightTrendCalculator.averageByLocalDay(samples, zone)
+
+        assertEquals(1, result.size)
+        assertEquals(81.0, result[LocalDate.of(2026, 8, 1)]!!, 0.0001)
+    }
+
+    @Test
+    fun averageByLocalDayPreservesDifferentDaysWithoutCollapsing() {
+        val samples = listOf(
+            WeightSample(Instant.parse("2026-08-01T06:00:00Z"), 80.0),
+            WeightSample(Instant.parse("2026-08-02T06:00:00Z"), 82.0),
+            WeightSample(Instant.parse("2026-08-03T06:00:00Z"), 84.0),
+        )
+
+        val result = WeightTrendCalculator.averageByLocalDay(samples, zone)
+
+        assertEquals(3, result.size)
+        assertEquals(80.0, result[LocalDate.of(2026, 8, 1)]!!, 0.0001)
+        assertEquals(82.0, result[LocalDate.of(2026, 8, 2)]!!, 0.0001)
+        assertEquals(84.0, result[LocalDate.of(2026, 8, 3)]!!, 0.0001)
+    }
+
+    @Test
+    fun averageByLocalDayWithEmptyInputReturnsEmptyMap() {
+        val result = WeightTrendCalculator.averageByLocalDay(emptyList(), zone)
+        assertEquals(0, result.size)
+    }
+
+    @Test
+    fun dailyTrendThrowsWhenEndIsBeforeStart() {
+        val start = LocalDate.of(2026, 8, 3)
+        val end = LocalDate.of(2026, 8, 1)
+
+        try {
+            WeightTrendCalculator.dailyTrend(emptyList(), start, end, zone)
+            fail("Expected IllegalArgumentException but no exception was thrown")
+        } catch (e: IllegalArgumentException) {
+            // Expected
+        }
+    }
 
     @Test
     fun emptyInputProducesAllNullDays() {
