@@ -53,18 +53,35 @@ class WeightModelsTest {
     }
 
     @Test
-    fun encodesANewWeightEntryPayloadWithDefaultSource() {
+    fun encodesANewWeightEntryPayloadOmittingServerGeneratedColumns() {
         val payload = NewWeightEntry(
             userId = "user-1",
             measuredAt = "2026-08-03T06:30:00Z",
             weightKg = 82.4,
         )
 
+        // kotlinx.serialization's default Json leaves encodeDefaults = false, so a
+        // default-valued property (source = "manual" here) is omitted from the
+        // output rather than written out -- asserting it's present would describe
+        // a wire payload this Json instance never actually produces.
         val encoded = json.encodeToString(NewWeightEntry.serializer(), payload)
 
         assertEquals(true, encoded.contains("\"weight_kg\":82.4"))
-        assertEquals(true, encoded.contains("\"source\":\"manual\""))
         assertEquals(false, encoded.contains("\"id\""))
         assertEquals(false, encoded.contains("\"created_at\""))
+    }
+
+    @Test
+    fun encodesANewWeightEntryPayloadWithAnExplicitNonDefaultSource() {
+        val payload = NewWeightEntry(
+            userId = "user-1",
+            measuredAt = "2026-08-03T06:30:00Z",
+            weightKg = 82.4,
+            source = "healthconnect",
+        )
+
+        val encoded = json.encodeToString(NewWeightEntry.serializer(), payload)
+
+        assertEquals(true, encoded.contains("\"source\":\"healthconnect\""))
     }
 }
