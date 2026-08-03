@@ -145,6 +145,11 @@ a new discovery, just a new place it bites.
 
 ## Still open: no scheduling/trigger for `recomputeExpenditure`
 
+**Resolved** by `docs/superpowers/plans/2026-08-03-weight-coach-screens.md`:
+`CoachScreen`/`CoachViewModel` is now the first caller. It calls
+`ExpenditureRepository.recomputeExpenditure()` on every screen resume
+(`ON_RESUME`). Left below for historical context.
+
 Like `TrendRepository.recomputeTrend`, `ExpenditureRepository.recomputeExpenditure`
 is entirely caller-driven -- nothing in this slice calls it. Whoever wires up
 the first caller needs to decide when recomputation happens: on app open, on

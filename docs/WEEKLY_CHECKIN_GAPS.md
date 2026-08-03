@@ -16,6 +16,16 @@ through unchanged (it already matches the schema's CHECK constraint).
 
 ## Still open: no real source for `targetRateKgPerWeek`
 
+**Resolved (partially)** by `docs/superpowers/plans/2026-08-03-weight-coach-screens.md`:
+the Coach screen now provides a source via a `Slider` UI control
+(`CoachViewModel.onTargetRateChanged`), but it is not persisted anywhere --
+it's a per-`CoachViewModel`-instance transient value that resets to `0.0`
+every time a fresh `CoachViewModel` is created (e.g. on process death, or,
+before this fix wave's back-stack fix, on every tab switch). This is
+meaningfully different from "no source at all" but is still not a real
+stored user preference -- a future `macro_programs` slice still owns making
+this persistent. Left below for historical context.
+
 `CheckInRepository.recomputeCheckIn` requires the caller to supply
 `targetRateKgPerWeek` directly -- there is no `macro_programs` read path in
 this codebase yet (that table, and the whole coached/collaborative/manual
@@ -35,6 +45,16 @@ future UI must guard against offering a check-in before the user has logged
 at least one weigh-in.
 
 ## Still open: no scheduling/trigger for `recomputeCheckIn`
+
+**Resolved** by `docs/superpowers/plans/2026-08-03-weight-coach-screens.md`:
+the Coach screen is now the first caller. Decided as: trigger = the user
+tapping the "Check in" button (not automatic/scheduled), week convention =
+most-recent-Monday through the following Sunday, device-local
+(`CoachViewModel.currentWeekStart`). This matches this file's own
+already-documented understanding, below and in "Still open: `weekStart`/
+`weekEnd` are row labels only", that `weekStart`/`weekEnd` are row labels
+only and don't bound the actual computation -- picking a convention for the
+label doesn't resolve that separate gap. Left below for historical context.
 
 Like `TrendRepository.recomputeTrend`/`ExpenditureRepository.recomputeExpenditure`,
 `recomputeCheckIn` is entirely caller-driven -- nothing in this slice calls
@@ -144,6 +164,16 @@ whether recompute should ever touch an already-resolved week, rather than discov
 this behavior by surprise.
 
 ## Still open: losing concurrent resolve() call throws opaque error
+
+**Resolved** by `docs/superpowers/plans/2026-08-03-weight-coach-screens.md`
+(a final-review fix, not the original plan): `CoachViewModel.resolve` now
+catches `NoSuchElementException`, `IllegalArgumentException`, and
+`IllegalStateException` separately, in that order, ahead of a generic
+`catch (e: Exception)`, and surfaces a distinct user-facing message for
+each of the three cases described below, re-fetching the check-in row
+afterward so the UI reflects reality. `CheckInRepository.resolve` itself is
+unchanged -- the translation happens at the caller, the second option this
+section names. Left below for historical context.
 
 A losing concurrent `resolve()` call fails loudly (correct) by matching zero rows in
 the compare-and-set filter, but the actual exception it throws is a generic

@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import java.time.Duration
 import java.time.Instant
 import java.time.temporal.ChronoUnit
 
@@ -32,7 +33,28 @@ class WeightViewModel(
     private val _uiState = MutableStateFlow(WeightUiState())
     val uiState: StateFlow<WeightUiState> = _uiState.asStateFlow()
 
-    fun refresh() {
+    /** Wall-clock time of the last successful [refresh]; null until one has ever succeeded. */
+    private var lastRefreshedAt: Instant? = null
+
+    /**
+     * @param force Bypass the [REFRESH_MIN_INTERVAL] throttle below. Used by [logWeight] and
+     * [deleteEntry], which call this after a write specifically to pick up that write's effect on
+     * both the entry list and the recomputed trend -- throttling those would leave the screen
+     * showing stale data right after the user's own edit, which is worse than the extra
+     * recompute the throttle exists to avoid. Screen-resume calls (`WeightScreen`'s ON_RESUME
+     * observer) call this with no arguments and are the ones the throttle is for.
+     */
+    fun refresh(force: Boolean = false) {
+        // Skip re-triggering the writing recompute (recomputeTrend) on a resume that happens
+        // shortly after the last successful one -- e.g. a rotation, or a tab re-entry that
+        // Finding 3's nav fix didn't already dedupe. Still shows whatever is already loaded;
+        // doesn't flip isLoading or clear state. Always proceeds on the very first load
+        // (isLoading still true / nothing loaded yet), regardless of the timer.
+        val alreadyHasData = !_uiState.value.isLoading
+        val last = lastRefreshedAt
+        if (!force && alreadyHasData && last != null && Duration.between(last, Instant.now()) < REFRESH_MIN_INTERVAL) {
+            return
+        }
         _uiState.value = _uiState.value.copy(isLoading = true, errorMessage = null)
         viewModelScope.launch {
             try {
@@ -45,6 +67,7 @@ class WeightViewModel(
                 // "on-demand when a trend screen opens" as one legitimate option.
                 val trendPoints = trendRepository.recomputeTrend(since)
                 _uiState.value = _uiState.value.copy(isLoading = false, entries = entries, trendPoints = trendPoints)
+                lastRefreshedAt = Instant.now()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -68,7 +91,7 @@ class WeightViewModel(
             try {
                 weightRepository.logWeight(measuredAt = Instant.now(), weightKg = weightKg)
                 _uiState.value = _uiState.value.copy(isSaving = false, weightInputText = "")
-                refresh()
+                refresh(force = true)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -84,7 +107,7 @@ class WeightViewModel(
         viewModelScope.launch {
             try {
                 weightRepository.deleteEntry(entryId)
-                refresh()
+                refresh(force = true)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -95,5 +118,6 @@ class WeightViewModel(
 
     companion object {
         private const val HISTORY_WINDOW_DAYS = 90L
+        private val REFRESH_MIN_INTERVAL: Duration = Duration.ofSeconds(60)
     }
 }

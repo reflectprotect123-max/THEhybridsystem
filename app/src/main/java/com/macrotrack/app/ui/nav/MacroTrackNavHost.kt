@@ -98,7 +98,25 @@ fun MacroTrackNavHost(appContainer: AppContainer) {
                                     selected = currentRoute == item.route,
                                     onClick = {
                                         if (currentRoute != item.route) {
-                                            navController.navigate(item.route) { launchSingleTop = true }
+                                            // Standard bottom-nav semantics: popUpTo the start
+                                            // destination with saveState so repeated tab
+                                            // switching pops back to each tab's existing stack
+                                            // entry (and its ViewModelStore/state) instead of
+                                            // pushing an unbounded chain of new entries: without
+                                            // this, Daily Log -> Weight -> Daily Log pushes a
+                                            // second daily_log entry rather than reusing the
+                                            // first, so the back stack grows without bound and
+                                            // ON_RESUME-triggered writing recomputes (Weight,
+                                            // Coach) re-fire on every fresh entry. Uses the
+                                            // Destinations.DAILY_LOG route constant directly
+                                            // (not graph.findStartDestination()) -- this project
+                                            // pins navigation-compose 2.9.0, well past the
+                                            // 2.4.0 baseline this pattern has been stable since.
+                                            navController.navigate(item.route) {
+                                                popUpTo(Destinations.DAILY_LOG) { saveState = true }
+                                                launchSingleTop = true
+                                                restoreState = true
+                                            }
                                         }
                                     },
                                     // Plain Text, not an Icons.Filled.* ImageVector -- avoids
