@@ -6,7 +6,36 @@
 
 **Architecture:** `ExpenditureRepository` gains a `loadRecords()` method (a pure refactor extracting its existing full-history fetch + damping-anchor logic) so `CheckInRepository` can reuse the exact same records/anchor rather than re-deriving them. `CheckInRepository` combines that with the user's latest weigh-in, calls `weeklyCheckIn`, maps its vocabulary onto the schema's, and upserts by `(user_id, week_start)` — this table has a real uniqueness constraint, unlike `expenditure_estimates`'s append-only history.
 
-**Tech Stack:** Kotlin, `java.time`, kotlinx.serialization (including `kotlinx.serialization.json.JsonArray`/`buildJsonArray`/`buildJsonObject`), `io.github.jan-tennert.supabase` postgrest-kt/auth-kt 3.7.0, JUnit4.
+**Tech Stack:** Kotlin, `java.time`, kotlinx.serialization (including `kotlinx.serialization.json.JsonArray`/`Json.encodeToJsonElement`), `io.github.jan-tennert.supabase` postgrest-kt/auth-kt 3.7.0, JUnit4.
+
+> **Post-implementation note (CLAUDE.md: "if implementation and documentation
+> disagree, stop and reconcile"):** this plan's original Task 2/Task 3 code
+> sketches (`NewCheckIn`'s numeric fields, `observedExpenditureKcal`, and the
+> `buildJsonArray`/`buildJsonObject` module-encoding shown below) were revised
+> during Task 3's review and a follow-up fix commit, before that fix's own
+> re-review approved the branch. The code sketches further down in this
+> document are the *original* proposal and are kept for historical record —
+> they do not match what actually shipped. The real, correct behavior is:
+> - `NewCheckIn`'s seven numeric fields and `resolvedAt` have **no** Kotlin
+>   default (required constructor parameters, always transmitted explicitly,
+>   including explicit `null`) — not `= null` as sketched below. A defaulted
+>   `null` would have been silently omitted by kotlinx.serialization's
+>   `encodeDefaults = false` and left a stale prior value in place across an
+>   upsert instead of clearing it.
+> - `observedExpenditureKcal` reads `result.estimate.rawEstimateKcal`, not
+>   `result.estimate.estimateKcal` as sketched below — `estimateKcal` is the
+>   carried-forward anchor on a holding result, not anything observed that
+>   week; `rawEstimateKcal` is null on exactly the paths where nothing was
+>   really observed.
+> - `modules` is built via `Json.encodeToJsonElement(result.modules.map { CheckInModuleDto(...) }).jsonArray`,
+>   not hand-built `buildJsonArray`/`buildJsonObject` calls, so the decode
+>   side (`PersistedCheckIn.modules: List<CheckInModuleDto>`) and the write
+>   side can't drift on field names.
+>
+> See `app/src/main/java/com/macrotrack/app/data/model/CheckInModels.kt` and
+> `app/src/main/java/com/macrotrack/app/data/CheckInRepository.kt` for the
+> actual shipped code, and `docs/WEEKLY_CHECKIN_GAPS.md` for the full
+> incident and remaining open questions.
 
 ## Global Constraints
 
