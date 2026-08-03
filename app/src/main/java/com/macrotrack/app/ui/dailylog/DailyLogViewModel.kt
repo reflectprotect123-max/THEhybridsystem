@@ -31,10 +31,6 @@ class DailyLogViewModel(
     private val _uiState = MutableStateFlow(DailyLogUiState())
     val uiState: StateFlow<DailyLogUiState> = _uiState.asStateFlow()
 
-    init {
-        refresh()
-    }
-
     fun refresh() {
         val today = LocalDate.now()
         _uiState.value = _uiState.value.copy(isLoading = true, errorMessage = null)
