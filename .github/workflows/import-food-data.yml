@@ -31,7 +31,9 @@ jobs:
         run: |
           python import_openfoodfacts.py \
             --output seed_foods_off.sql \
-            --max-pages "${{ inputs.max_pages || '30' }}"
+            --max-pages "${{ inputs.max_pages || '30' }}" \
+            --page-size 50 \
+            --sleep-seconds 3
 
       - name: Summarize output
         run: |
