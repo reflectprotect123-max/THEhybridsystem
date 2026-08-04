@@ -317,27 +317,44 @@ def import_products(args: argparse.Namespace) -> Counter:
     seen_barcodes: set[str] = set()
     rows: List[Dict[str, Any]] = []
 
+    # Only the live API mode can fail mid-stream on a transient HTTP error; a
+    # local file either parses or it doesn't, so leave that path's exceptions
+    # to surface normally instead of masking a real bug in the input file.
+    recoverable_errors: Tuple[type, ...] = ()
+    if args.input is None:
+        recoverable_errors = (get_requests().exceptions.RequestException,)
+
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    for product in products:
-        counters["read"] += 1
-        if "__parse_error__" in product:
-            counters["malformed_json"] += 1
-            continue
-        if not is_australian_product(product):
-            counters["not_australia"] += 1
-            continue
-        try:
-            row = make_row(product)
-        except ValueError as exc:
-            counters[str(exc)] += 1
-            continue
-        barcode = row["barcode"]
-        if not args.keep_duplicate_barcodes and barcode in seen_barcodes:
-            counters["duplicate_barcode"] += 1
-            continue
-        seen_barcodes.add(barcode)
-        rows.append(row)
-        counters["written"] += 1
+    try:
+        for product in products:
+            counters["read"] += 1
+            if "__parse_error__" in product:
+                counters["malformed_json"] += 1
+                continue
+            if not is_australian_product(product):
+                counters["not_australia"] += 1
+                continue
+            try:
+                row = make_row(product)
+            except ValueError as exc:
+                counters[str(exc)] += 1
+                continue
+            barcode = row["barcode"]
+            if not args.keep_duplicate_barcodes and barcode in seen_barcodes:
+                counters["duplicate_barcode"] += 1
+                continue
+            seen_barcodes.add(barcode)
+            rows.append(row)
+            counters["written"] += 1
+    except recoverable_errors as exc:
+        print(
+            "WARNING: stopping early after a request failure ({}); "
+            "writing the {} product(s) already fetched instead of discarding them.".format(
+                exc, counters["written"]
+            ),
+            file=sys.stderr,
+        )
+        counters["stopped_early_on_error"] = 1
 
     write_food_sql(rows, args.output, legacy_schema=args.legacy_schema)
     counters["skipped"] = counters["read"] - counters["written"]
