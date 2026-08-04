@@ -30,4 +30,16 @@ class NutritionLabelParserTest {
         assertNull(result.servingUnit)
         assertTrue(!result.isEmpty)
     }
+
+    @Test
+    fun convertsKilojoulesToCaloriesWhenNoCalReadingIsPresent() {
+        val lines = listOf(
+            OcrLine("Energy", left = 0, top = 100, right = 80, bottom = 120),
+            OcrLine("836kJ", left = 200, top = 100, right = 260, bottom = 120),
+        )
+
+        val result = NutritionLabelParser.parse(lines)
+
+        assertEquals(199.809, result.calories!!, 0.01)
+    }
 }
