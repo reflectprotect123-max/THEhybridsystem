@@ -1,64 +1,243 @@
-# Session handoff — MacroTrack
+# MacroTrack — handoff (2026-08-04)
 
-Written 2026-08-03 so the next session can pick up exactly where this one
-left off. Read this first, then `CLAUDE.md`.
+Written so any AI/dev picking this up (this doc was written for a handoff to
+ChatGPT, but applies to anyone) can continue with zero prior context. Read
+`CLAUDE.md` next — it holds the non-negotiable product/data rules that bind
+every future change.
 
-## Repo state
+## Where the real repo lives
 
-- Branch `claude/macro-factor-app-dev-6twv5o` is pushed to
-  `reflectprotect123-max/thehybridsystem` with one commit: the imported
-  MacroTrack scaffold (Supabase migration, `adaptive_engine.py`, Open Food
-  Facts + AUSNUT/NUTTAB importers, Android starter module, tests).
-- Verified in this session: `python3 -m py_compile *.py` clean, all 9
-  `python3 -m unittest discover -s tests -v` tests pass, the
-  `adaptive_engine.py --input examples/checkin.json` CLI example runs.
-- Fixed a real bug: `gradle/wrapper/gradle-wrapper.properties` pointed at
-  `gradle-9.5-bin.zip`, which doesn't exist (only `9.5.0`/`9.5.1` were ever
-  released). Fixed to `9.5.1` and generated the missing `gradlew`,
-  `gradlew.bat`, and `gradle-wrapper.jar`.
-- NOT verified: the Android module itself. This sandbox has no Android SDK
-  and its network policy blocks `dl.google.com` (Google's Maven repo), so
-  Gradle can't even resolve the Android Gradle Plugin here. Kotlin 2.3.21,
-  supabase-kt bom 3.7.0, and ktor 3.5.1 were confirmed as real published
-  versions via Maven Central. AGP `9.3.0`, Compose BOM `2026.06.00`, and
-  `compileSdk`/`targetSdk = 37` were NOT verified — check these in Android
-  Studio's SDK Manager before the first Gradle sync.
+- GitHub: `reflectprotect123-max/thehybridsystem`
+- Branch: `claude/macro-factor-app-dev-6twv5o` (everything below is on this
+  branch, fully pushed)
+- Open PR: **#1** — https://github.com/reflectprotect123-max/THEhybridsystem/pull/1
+  (base branch `main`, created against the project's actual root commit —
+  see the PR description for why a `main` branch had to be created)
+- This zip is a point-in-time snapshot of that branch. **Prefer cloning from
+  GitHub over unzipping** if there's any doubt about freshness — the repo is
+  the source of truth, not this file.
 
-## Plugins installed this session
+## What's actually done (backend — fully built, reviewed, never contradicted)
 
-Installed via the `claude` CLI (present at `/opt/node22/bin/claude`) into
-the shared user config — **they were not active in the session that
-installed them and need a restart to load**. This restart is why this file
-exists.
+All of this was built with a subagent-driven-development process: implement
+→ independent code review → fix loop → repeat, then a final whole-branch
+review + fix wave per feature slice. Every slice below passed that process
+clean. None of it has ever been compiled (see "The one big caveat" below) —
+it's been verified by careful static review against real library/API
+sources, not by a compiler.
 
-- `superpowers@superpowers-marketplace` v6.2.0 —
-  github.com/obra/superpowers-marketplace
-- `ui-ux-pro-max@ui-ux-pro-max-skill` v2.11.0 —
-  github.com/nextlevelbuilder/ui-ux-pro-max-skill (styles/palettes/
-  typography/chart/stack-guideline database, includes Jetpack Compose)
-- `caveman@caveman` — github.com/juliusbrussee/caveman (ultra-compressed
-  communication mode; installs `SessionStart`/`UserPromptSubmit` hooks and
-  an MCP server, so it actively changes response style once active)
+- **Supabase schema** — `supabase/migrations/001_macro_foundation.sql`.
+  Foods, custom foods, recipes, food logs, day status, weights, weight
+  trend points, expenditure estimates, weekly check-ins, RLS policies.
+- **Adaptive engine** — `adaptive_engine.py` (Python reference,
+  deterministic, tested) ported to Kotlin at
+  `app/src/main/java/com/macrotrack/app/domain/{AdaptiveEngine,
+  MacroTargeting, WeeklyCheckIn, AdaptiveEngineModels}.kt`. The Kotlin port
+  was verified against the Python reference with ~450,000 randomized inputs
+  — zero divergence.
+- **Data repositories** (`app/src/main/java/com/macrotrack/app/data/`) —
+  one per concern, each wraps Supabase Postgrest calls: `FoodRepository`,
+  `CustomFoodRepository`, `RecipeRepository`, `FavoritesRepository`,
+  `RecentFoodRepository`, `LogRepository`, `DayStatusRepository`,
+  `WeightRepository`, `TrendRepository`, `ExpenditureRepository`,
+  `CheckInRepository`, `AuthRepository`. All wired together in
+  `AppContainer.kt`.
+- **Compose UI (full core app)** —
+  `app/src/main/java/com/macrotrack/app/ui/`:
+  - `theme/` — Material3 theme, calm sage-green/warm-sand palette
+  - `nav/` — bottom-tab NavHost (Daily Log / Weight / Coach), auth-gated
+  - `auth/` — sign-in/sign-up
+  - `dailylog/` — today's entries + totals (never renders an unlogged day
+    as zero — see CLAUDE.md rule #2)
+  - `search/` — Food Search + Add Log Entry (the core logging loop)
+  - `weight/` — log a weigh-in, history, hand-rolled Canvas trend sparkline
+  - `coach/` — expenditure estimate + weekly check-in accept/decline flow
+- **Data import pipeline** (Python, root of repo) — `import_openfoodfacts.py`,
+  `import_ausnut.py`, `seed_common.py`. Tested against fixtures
+  (`tests/test_importers.py`), never run against real production data (see
+  below).
 
-**First thing to do on reopen: confirm `superpowers` shows up as an
-available skill.** If it doesn't, the plugin install didn't take effect and
-needs re-checking with `claude plugin list`.
+## What's NOT done
 
-## What's next
+In `CLAUDE.md`'s own recommended order, everything through step 5 is done;
+6 and 7 are not started:
 
-The user asked to start the **food repository slice** — the next step in
-`CLAUDE.md`'s recommended implementation order (step 2, after the schema
-validation done in this session):
+1. ~~Validate migration~~ — done
+2. ~~Food repository~~ — done
+3. ~~Daily logger~~ — done
+4. ~~Port adaptive engine to Kotlin~~ — done
+5. ~~Weight logging, trend, expenditure state, weekly check-in~~ — done
+   (both backend and UI)
+6. **Barcode camera integration** — not started. Exact-barcode lookup
+   already works in `FoodRepository`; this is "add a camera scanner that
+   calls it," not new backend work.
+7. **OCR / URL recipe import / speech / image AI adapters** — not started.
+   CLAUDE.md is explicit these must never silently overwrite a verified
+   food.
 
-> Build the food repository: exact barcode lookup, name/brand search,
-> serving scaling, favorites, recent history, custom foods, and recipes.
+Also not done, not in CLAUDE.md's list but real gaps:
 
-Explicit instruction from the user: **use the `superpowers` skill to
-develop the plan** for this slice before implementing it. Do not skip this
-and plan solo — that's the whole reason this handoff file exists instead of
-just continuing.
+- **The Android module has never been compiled, anywhere, ever.** See below
+  — this is the single most important unresolved risk in the whole repo.
+- **No real Supabase project has been created or seeded** — schema and
+  import pipeline are ready, nothing has actually been run against a live
+  database.
+- **No real AUSNUT/NUTTAB or OpenFoodFacts import has been run** — see
+  "Data import" below, this needs an environment with real internet access.
+- App icon/branding, Play Store packaging — not started.
+- `macro_programs` (a real, editable, persisted user goal-rate) — not
+  started; the Coach screen's rate slider is a session-only UI control, not
+  yet backed by a table (documented in
+  `docs/WEEKLY_CHECKIN_GAPS.md`).
 
-Reference docs, in priority order: `CLAUDE.md`, `README.md`,
-`supabase/migrations/001_macro_foundation.sql`,
-`docs/ADAPTIVE_ENGINE_CONTRACT.md`. When the slice reaches Compose UI
-screens, use `ui-ux-pro-max` for style/palette/typography choices.
+## The one big caveat — nothing has ever compiled
+
+The sandbox this was built in has **no Android SDK, no emulator, and no
+network access to Google's Maven** (`dl.google.com` is blocked by its proxy
+policy). Every Kotlin file was verified by:
+1. Reading the actual current source of every file it calls into (never
+   assuming a signature from memory)
+2. Cross-checking third-party API usage (Supabase auth-kt/postgrest-kt,
+   AndroidX Navigation-Compose, Jetpack lifecycle-viewmodel) against real
+   decompiled/downloaded library sources where possible
+3. Multiple independent review passes per feature slice, including a final
+   whole-branch review on the most capable model available, specifically
+   hunting for exactly this class of "looks right but doesn't compile" bug
+
+This caught and fixed several real bugs this way (a wrong import package
+for `viewModelFactory`, `CancellationException` being silently swallowed by
+bare `catch (Exception)` blocks across every ViewModel, a missing
+`onConflict` on an upsert that would throw on the second write, a nested
+`Scaffold` double-applying window insets). **But it is still static review,
+not a compiler.** The very first thing that must happen on a real machine:
+
+```bash
+./gradlew :app:compileDebugKotlin
+./gradlew :app:assembleDebug
+```
+
+Known specific risks flagged in the plan docs (search
+`docs/superpowers/plans/*.md` for "unverified" if you want the full list):
+- `androidx.navigation:navigation-compose:2.9.0`'s exact patch version was
+  never confirmed resolvable against Compose BOM `2026.06.00`
+- `Icons.Filled.Add`'s assumption that `material-icons-core` is still a
+  transitive dependency of `material3` (recent Material3 releases have been
+  removing this) — if it doesn't resolve, either add
+  `implementation("androidx.compose.material:material-icons-core")`
+  explicitly or replace with `Text("+")`
+- AGP `9.3.0`, Compose BOM `2026.06.00`, `compileSdk`/`targetSdk = 37` were
+  never confirmed to actually exist as real published versions — check
+  Android Studio's SDK Manager / Maven Central before first sync
+
+## Setting up to actually build and run it
+
+1. **Get a Supabase project** (user already has one). From the dashboard:
+   Project Settings → API → copy the Project URL and the **anon/publishable**
+   key. **Never** use the service-role key here (CLAUDE.md rule #6).
+2. **Apply the schema**: run `supabase/migrations/001_macro_foundation.sql`
+   in the Supabase SQL editor (or `supabase db push` via the CLI).
+3. **Create `local.properties`** at the repo root (gitignored, never commit
+   it):
+   ```properties
+   SUPABASE_URL=https://your-project.supabase.co
+   SUPABASE_PUBLISHABLE_KEY=your-publishable-key
+   ```
+4. **Open in Android Studio**, sync Gradle, then run the two commands in
+   "The one big caveat" above. Fix whatever the compiler finds — expect a
+   handful of real issues given nothing here has compiled before.
+5. **Manually walk the app** once it builds: sign up → sign in → search a
+   food → log it → see it on Daily Log → log a weigh-in on Weight → see the
+   trend sparkline → open Coach → see the expenditure estimate → adjust the
+   goal-rate slider → check in → accept/decline → sign out. Rotate the
+   device on each screen (there were real config-change bugs already found
+   and fixed once — check nothing regressed).
+
+## Data import — why it wasn't run, and exactly how to run it
+
+The sandbox this was built in blocks outbound HTTPS to arbitrary domains
+(only a small allowlist of package-registry/dev-infra domains is reachable
+— `pypi.org`, `npmjs.org`, etc.). Both FSANZ (AUSNUT/NUTTAB) and
+OpenFoodFacts returned `403` on every connection attempt. **The import
+scripts themselves are ready and tested against fixtures** — they just need
+to run somewhere with real internet access (your own machine is fine).
+
+**Open Food Facts** (Australia-scoped, via live API):
+```bash
+python3 import_openfoodfacts.py --output seed_foods_off.sql
+```
+Or from a local dump (more reproducible, avoids hammering their API):
+```bash
+# Download from https://world.openfoodfacts.org/data (the .jsonl.gz export)
+python3 import_openfoodfacts.py \
+  --input openfoodfacts-products.jsonl.gz \
+  --output seed_foods_off.sql
+```
+
+**AUSNUT/AFCD** (download the current Excel files from
+https://www.foodstandards.gov.au — search "AUSNUT" or "AFCD"):
+```bash
+python3 import_ausnut.py \
+  --nutrients "AUSNUT 2023 - Food nutrient profiles.xlsx" \
+  --foods "AUSNUT 2023 - Food details.xlsx" \
+  --measures "AUSNUT 2023 - Food measures.xlsx" \
+  --output seed_foods_ausnut.sql
+```
+Or NUTTAB-style CSVs (also on the same FSANZ page):
+```bash
+python3 import_ausnut.py \
+  --source nuttab \
+  --nutrients NUTTAB_Nutrient_File.csv \
+  --foods NUTTAB_Food_File.csv \
+  --output seed_foods_nuttab.sql
+```
+
+Then apply the generated `.sql` files to your Supabase project using a
+**service-role** connection (SQL editor or `psql`) — **never** commit these
+generated SQL files to the repo (CLAUDE.md rule #7: they're disposable
+output, and AUSNUT/OFF dumps are large). Batches are already capped at 500
+rows per CLAUDE.md rule #5, no code change needed there.
+
+Full documented behavior (kJ→kcal conversion rules, barcode vs. generic-food
+provenance, 100g/ml fallback policy) is in `README.md`'s import sections —
+read that before running these for real, it documents exactly what the
+scripts will and won't guess.
+
+## Non-negotiable rules (CLAUDE.md, do not violate these)
+
+1. Never invent nutrition numbers, barcode values, serving weights, food
+   densities, or nutrient units.
+2. Never turn an unlogged or partial day into zero calories.
+3. Preserve source provenance and the original nutrient profile.
+4. Keep barcode data separate from generic foods (AUSNUT/NUTTAB rows have
+   `barcode = NULL`, `external_id` = the source food ID).
+5. Keep SQL batches at 500 rows or fewer.
+6. Keep the service-role Supabase key out of Android — publishable/anon key
+   + RLS only.
+7. Generated seed SQL is disposable — don't commit large real food dumps.
+8. No destructive schema changes without a migration + a clear note.
+9. If implementation and a doc disagree, stop and reconcile — don't
+   silently pick one.
+
+## Where to find more detail
+
+- `docs/*_GAPS.md` — every known unresolved edge case/limitation per
+  feature slice, written down instead of guessed at. Read the one for
+  whatever you're about to touch before changing it.
+- `docs/superpowers/plans/*.md` — the actual implementation plans this was
+  built from, one per feature slice, each with a Global Constraints section
+  and a Self-Review. These are the most detailed record of *why* things
+  were built the way they were.
+- `docs/ADAPTIVE_ENGINE_CONTRACT.md` — the Kotlin-port handoff contract for
+  the adaptive engine specifically (evidence boundaries, what's product
+  choice vs. what's evidence-backed).
+
+## If you don't have superpowers/subagent-driven-development tooling
+
+Everything above was built via a specific Claude Code plugin
+(`superpowers`) that structures work as: write a detailed plan →
+dispatch an implementer → independent code review → fix loop → final
+whole-branch review. You don't need that exact tooling to continue — just
+keep doing what it was enforcing: read the actual current code before
+changing it (not from memory), write tests where you can, get a second
+independent look at anything non-trivial before considering it done, and
+write down any gap or tradeoff you accept rather than silently shipping it.
