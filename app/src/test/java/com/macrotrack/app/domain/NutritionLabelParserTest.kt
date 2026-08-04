@@ -42,4 +42,23 @@ class NutritionLabelParserTest {
 
         assertEquals(199.809, result.calories!!, 0.01)
     }
+
+    @Test
+    fun doesNotConfuseSaturatedFatOrSugarsWithTheTotalRow() {
+        val lines = listOf(
+            OcrLine("Fat, total", left = 0, top = 160, right = 90, bottom = 180),
+            OcrLine("9.4g", left = 200, top = 160, right = 250, bottom = 180),
+            OcrLine("- saturated", left = 10, top = 190, right = 100, bottom = 210),
+            OcrLine("6.1g", left = 200, top = 190, right = 250, bottom = 210),
+            OcrLine("Carbohydrate", left = 0, top = 220, right = 100, bottom = 240),
+            OcrLine("22.0g", left = 200, top = 220, right = 260, bottom = 240),
+            OcrLine("- sugars", left = 10, top = 250, right = 100, bottom = 270),
+            OcrLine("18.5g", left = 200, top = 250, right = 260, bottom = 270),
+        )
+
+        val result = NutritionLabelParser.parse(lines)
+
+        assertEquals(9.4, result.fatG!!, 0.001)
+        assertEquals(22.0, result.carbsG!!, 0.001)
+    }
 }
