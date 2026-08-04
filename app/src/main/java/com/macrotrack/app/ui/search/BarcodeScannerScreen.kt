@@ -340,6 +340,7 @@ private class ProductBarcodeAnalyzer(
 
     private val emitted = AtomicBoolean(false)
 
+    @OptIn(androidx.camera.core.ExperimentalGetImage::class)
     override fun analyze(imageProxy: ImageProxy) {
         if (emitted.get()) {
             imageProxy.close()
