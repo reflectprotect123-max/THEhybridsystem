@@ -1,4 +1,4 @@
-# MacroTrack — handoff (2026-08-04)
+# MacroTrack — handoff (2026-08-04, updated)
 
 ## Native Android rebuild status
 
@@ -8,66 +8,51 @@ Compose, Android Navigation, CameraX, bundled ML Kit, and the Supabase Kotlin
 client. No WebView, JavaScript bridge, Expo runtime, or React dependency is
 present in `app/`.
 
-The native-build hardening completed in this pass:
+Written so any AI/dev picking this up (this doc was written across a handoff
+to ChatGPT and back again, but applies to anyone) can continue with zero
+prior context. Read `CLAUDE.md` next — it holds the non-negotiable
+product/data rules that bind every future change.
 
-- corrected the barcode screen's lifecycle-owner import to
-  `androidx.lifecycle.compose.LocalLifecycleOwner`;
-- added the required `lifecycle-runtime-compose` dependency;
-- removed placeholder `TODO()` implementations from the Android unit-test
-  fakes;
-- confirmed the configured AGP, Kotlin, Compose, AndroidX, CameraX, ML Kit,
-  Supabase, Ktor, and serialization coordinates are published;
-- added `NATIVE_ANDROID_HANDOFF.md` with the exact Claude build and device
-  acceptance sequence.
+## Round-trip history: Claude → ChatGPT → Claude (review pass)
 
-Written so any AI/dev picking this up (this doc was written for a handoff to
-ChatGPT, but applies to anyone) can continue with zero prior context. Read
-`CLAUDE.md` next — it holds the non-negotiable product/data rules that bind
-every future change.
+1. Claude built the backend + full core UI (theme, auth, Daily Log, Food
+   Search, Weight, Coach) across the earlier sessions recorded below.
+2. That work was handed off to ChatGPT (via a zip + this file), which added:
+   barcode camera scanning (CameraX + ML Kit), persisted macro-goal programs
+   (`MacroProgramRepository`, migrations 002–005), custom-food creation,
+   quick-add, a recipe builder, and historical-date navigation on Daily Log.
+3. ChatGPT's result was handed back and **independently re-reviewed here**
+   before merging — 5 parallel adversarial review passes, one per functional
+   area, none of which trusted ChatGPT's own self-reported verification
+   claims. They found **6 Critical and ~22 Important defects**, most
+   seriously: `DailyLogScreen.kt` did not compile at all (a missing closing
+   brace made a `private fun` illegally nested inside another function —
+   caught by careful manual brace-counting, since no compiler was available
+   here either). Other Criticals included two independent recurrences of bug
+   *classes* already fixed once earlier in this project (a `CancellationException`
+   dead-end reintroduced through a new code path; a `NavController` captured
+   inside a retained `ViewModel`'s constructor, stale after rotation; the
+   `encodeDefaults=false`-omission-on-upsert bug reappearing in a new model
+   class after a migration changed insert→upsert). All were fixed in 5
+   parallel fix passes on disjoint files, then independently re-verified
+   (brace balance confirmed via hand trace, a purpose-built lexer, *and* a
+   negative-control reproduction of the original bug) before committing.
+   Full detail: the commit message on the merge commit, and
+   `docs/BARCODE_SCANNER_GAPS.md`, `docs/WEEKLY_CHECKIN_GAPS.md`,
+   `docs/EXPENDITURE_STATE_GAPS.md` (each gained new sections from this pass).
 
-## Latest continuation in this workspace
+**Still true after all of that: nothing in this repository has ever been
+compiled by a real Kotlin compiler.** See "The one big caveat" below — this
+sandbox's network policy still blocks `dl.google.com` (re-confirmed by a
+direct `curl`/`./gradlew` test after the ChatGPT round-trip, not assumed from
+earlier notes), the same wall both Claude and ChatGPT hit independently.
 
-After the barcode handoff, the persisted-goal and custom-food slices were
-continued:
-
-- `MacroProgramRepository` now loads/saves the active goal from
-  `macro_programs`; changing the signed rate pauses the old program and starts
-  a new one, preserving check-in provenance.
-- `weekly_check_ins.program_id` is now written and used to filter the current
-  program's check-in.
-- Migration `002_active_macro_program.sql` enforces at most one active program
-  per user. It intentionally does not delete duplicate historical data; if an
-  existing database has duplicate active rows, reconcile them explicitly
-  before applying that migration.
-- Food Search now exposes custom-food creation. The form validates user-entered
-  serving and macro values, persists the food, and opens Add Log Entry for it.
-
-The latest continuation also closed these product gaps:
-
-- Daily Log navigates across historical dates; food, custom-food, recipe,
-  quick-add, and day-status writes are attached to the selected date.
-- Food logging defaults to the source serving quantity rather than `1` unit,
-  preventing a 100 g food from silently logging as 1 g.
-- Quick-add logging, favorite toggles for foods/custom foods/recipes, and a
-  deterministic recipe builder are available from Food Search.
-- Accepting a ready check-in persists its proposed macro targets across the
-  next program week in `macro_program_days` with `source = accepted_check_in`.
-- Migration `004_owner_reference_policies.sql` prevents user-owned custom
-  foods and recipes being referenced across accounts through logs, recipes,
-  or favorites.
-- Migration `005_checkin_program_provenance.sql` keys weekly check-ins by
-  `(user_id, program_id, week_start)` so changing goals during a week cannot
-  overwrite the prior program's proposal.
-- The deterministic ready check-in now emits the documented `program_update`
-  module in both Python and Kotlin.
-
-The current release-candidate verification and environment boundary are
-summarized in `docs/RELEASE_CANDIDATE_2026-08-04.md`.
-
-Python regression tests still pass. Android compilation remains unverified in
-this workspace because Java cannot resolve the Android Gradle Plugin from
-Google Maven and no Android SDK is installed; the exact failure is recorded in
-the continuation log.
+Python regression tests still pass (9/9). `docs/RELEASE_CANDIDATE_2026-08-04.md`
+and `docs/VERIFICATION_2026-08-04.md` are ChatGPT's own self-reported
+verification notes from before the review pass above — read them as a record
+of what was *claimed*, not as independently confirmed fact; several of their
+specific claims (e.g. a "published-coordinate audit" that implied dependency
+resolution had been checked) were corrected during the review.
 
 ## Where the real repo lives
 
@@ -158,12 +143,23 @@ step 7 is not started:
 4. ~~Port adaptive engine to Kotlin~~ — done
 5. ~~Weight logging, trend, expenditure state, weekly check-in~~ — done
    (both backend and UI)
-6. ~~Barcode camera integration~~ — implemented, but not yet compiled or
-   tested on a physical Android device. Exact-barcode lookup already existed
-   in `FoodRepository`; the camera now calls that path.
-7. **OCR / URL recipe import / speech / image AI adapters** — not started.
-   CLAUDE.md is explicit these must never silently overwrite a verified
-   food.
+6. ~~Barcode camera integration~~ — implemented and independently reviewed
+   (see the round-trip history above), but not yet compiled or tested on a
+   physical Android device.
+7. **OCR / URL recipe import / speech / image AI adapters** — design
+   in progress for the first of these (nutrition-label OCR, picked over
+   URL-recipe-import and speech logging as the smallest incremental step —
+   it reuses the CameraX capture infrastructure just built for barcode
+   scanning). As of this handoff: a design has been proposed and presented
+   to the user (on-device ML Kit Text Recognition, not a cloud OCR API;
+   results pre-fill the *existing* Create Custom Food form rather than a new
+   save pathway; every extracted field stays fully editable and a low-confidence
+   field is left blank rather than guessed) but **not yet formally
+   written up as a spec, not yet approved, and no implementation plan or
+   code exists for it**. Whoever picks this up next should either continue
+   that design conversation to a written, approved spec before building, or
+   restart the design from scratch if the context feels stale. URL recipe
+   import and speech/voice logging are fully unstarted, not even designed.
 
 Also not done, not in CLAUDE.md's list but real gaps:
 
