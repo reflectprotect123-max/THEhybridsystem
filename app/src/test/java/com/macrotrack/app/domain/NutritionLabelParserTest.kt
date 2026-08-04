@@ -111,4 +111,16 @@ class NutritionLabelParserTest {
         assertNull(result.servingQty)
         assertNull(result.servingUnit)
     }
+
+    @Test
+    fun returnsAnEmptyResultWhenNothingRecognizableIsFound() {
+        val lines = listOf(
+            OcrLine("Ingredients: wheat flour, sugar, vegetable oil", left = 0, top = 300, right = 400, bottom = 320),
+            OcrLine("Best before 12/2027", left = 0, top = 340, right = 200, bottom = 360),
+        )
+
+        val result = NutritionLabelParser.parse(lines)
+
+        assertTrue(result.isEmpty)
+    }
 }
