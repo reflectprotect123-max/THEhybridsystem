@@ -57,6 +57,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--api-url", default=API_URL)
     parser.add_argument("--page-size", type=int, default=100)
     parser.add_argument("--max-pages", type=int, default=0, help="0 means all available API pages")
+    parser.add_argument(
+        "--start-page",
+        type=int,
+        default=1,
+        help="API page to begin fetching from, for resuming a previous run instead of refetching page 1.",
+    )
     parser.add_argument("--sleep-seconds", type=float, default=0.25)
     parser.add_argument("--timeout", type=float, default=60.0)
     parser.add_argument(
@@ -127,7 +133,9 @@ def get_requests():
     return requests
 
 
-def iter_api_products(args: argparse.Namespace) -> Iterator[Dict[str, Any]]:
+def iter_api_products(
+    args: argparse.Namespace, progress: Optional[List[int]] = None
+) -> Iterator[Dict[str, Any]]:
     requests = get_requests()
     page_size = max(1, min(args.page_size, 100))
     fields = [
@@ -148,7 +156,7 @@ def iter_api_products(args: argparse.Namespace) -> Iterator[Dict[str, Any]]:
     ]
     session = requests.Session()
     headers = {"User-Agent": args.user_agent, "Accept": "application/json"}
-    page = 1
+    page = max(1, getattr(args, "start_page", 1))
     while True:
         params = {
             "countries_tags_en": "australia",
@@ -174,6 +182,12 @@ def iter_api_products(args: argparse.Namespace) -> Iterator[Dict[str, Any]]:
         if not isinstance(products, list) or not products:
             break
         yield from (item for item in products if isinstance(item, dict))
+        if progress is not None:
+            # Only reached once the consumer has pulled every product from
+            # this page, so a page is never marked done until it's actually
+            # been handed off - a later failure on the *next* page can't
+            # retroactively make this one look incomplete.
+            progress[0] = page
         page_count = payload.get("page_count")
         if args.max_pages and page >= args.max_pages:
             break
@@ -312,7 +326,11 @@ def make_row(product: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def import_products(args: argparse.Namespace) -> Counter:
-    products = iter_local_products(args.input) if args.input else iter_api_products(args)
+    last_completed_page = [getattr(args, "start_page", 1) - 1]
+    if args.input:
+        products = iter_local_products(args.input)
+    else:
+        products = iter_api_products(args, progress=last_completed_page)
     counters: Counter = Counter()
     seen_barcodes: set[str] = set()
     rows: List[Dict[str, Any]] = []
@@ -358,6 +376,8 @@ def import_products(args: argparse.Namespace) -> Counter:
 
     write_food_sql(rows, args.output, legacy_schema=args.legacy_schema)
     counters["skipped"] = counters["read"] - counters["written"]
+    if args.input is None:
+        counters["next_start_page"] = last_completed_page[0] + 1
     return counters
 
 
@@ -373,8 +393,13 @@ def main() -> int:
     print("Rows written: {}".format(counters["written"]))
     print("Products skipped: {}".format(counters["skipped"]))
     for reason, count in sorted(counters.items()):
-        if reason not in {"read", "written", "skipped"}:
+        if reason not in {"read", "written", "skipped", "next_start_page"}:
             print("  {}: {}".format(reason, count))
+    if "next_start_page" in counters:
+        # Machine-readable resume point: a caller (e.g. a CI workflow) can
+        # grep this line to pick up from here next time instead of
+        # refetching pages already completed by this run.
+        print("NEXT_START_PAGE={}".format(counters["next_start_page"]))
     return 0
 
 
