@@ -47,3 +47,12 @@ jobs:
         with:
           name: seed_foods_off
           path: seed_foods_off.sql
+
+      - name: Push seed SQL to a scratch branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -B data/off-seed-import
+          git add -f seed_foods_off.sql
+          git commit -m "Generate Open Food Facts (Australia) seed SQL (run ${{ github.run_id }})"
+          git push -f origin data/off-seed-import
