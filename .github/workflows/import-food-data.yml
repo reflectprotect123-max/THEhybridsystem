@@ -11,6 +11,9 @@ on:
     paths:
       - ".github/workflows/import-food-data.yml"
 
+permissions:
+  contents: write
+
 jobs:
   generate:
     name: Import Open Food Facts (Australia) and output seed SQL
