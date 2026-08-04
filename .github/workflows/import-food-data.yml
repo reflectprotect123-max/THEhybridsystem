@@ -6,7 +6,7 @@ on:
       max_pages:
         description: "Open Food Facts API pages to fetch (0 = all available pages, page size 100)"
         required: true
-        default: "30"
+        default: "8"
   push:
     paths:
       - ".github/workflows/import-food-data.yml"
@@ -31,9 +31,9 @@ jobs:
         run: |
           python import_openfoodfacts.py \
             --output seed_foods_off.sql \
-            --max-pages "${{ inputs.max_pages || '30' }}" \
+            --max-pages "${{ inputs.max_pages || '8' }}" \
             --page-size 50 \
-            --sleep-seconds 3
+            --sleep-seconds 4
 
       - name: Summarize output
         run: |
