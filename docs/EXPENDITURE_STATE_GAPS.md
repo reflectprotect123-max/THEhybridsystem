@@ -7,27 +7,13 @@ here, not filled with guesses. From building
 `docs/ADAPTIVE_ENGINE_GAPS.md`'s "Nullable engine fields vs. NOT NULL schema
 columns" gap.
 
-## Still open: `loadRecords()` extraction (from the weekly-check-in slice) introduced a narrow midnight race
+## Resolved: `loadRecords()` and recompute share one date snapshot
 
-`docs/superpowers/plans/2026-08-03-weekly-check-in.md` extracted
-`recomputeExpenditure()`'s fetch/assemble/anchor logic into a new
-`loadRecords()` method so `CheckInRepository` could reuse it. That refactor
-was reviewed and confirmed behavior-preserving, with one narrow exception:
-`recomputeExpenditure()` and `loadRecords()` now each call
-`LocalDate.now(zoneId)` independently, separated by a `getLatestEstimate()`
-network round trip, where before there was exactly one `today` shared by
-both. If the clock rolls over in that window, `recomputeExpenditure()`'s
-own `isPreviousFromToday` (computed against the earlier `today`) can end up
-true while `loadRecords()`'s internal anchor selection (computed against
-the later `today`) treats the same row as *not* from today — the net
-effect is that a genuine prior-day estimate row gets deleted as if it were
-today's own row, losing one day of persisted estimate history. The damping
-anchor itself stays correct either way (verified during review), so this
-is a data-retention gap, not a correctness regression in the numbers.
-Fixable by threading one shared `today` into `loadRecords()` (e.g. as an
-optional parameter defaulting to a fresh `LocalDate.now(zoneId)`, so
-`CheckInRepository`'s call site doesn't need to change) — not done here to
-keep the refactor itself minimal and reviewable.
+`loadRecordsAt(today)` is now the internal source for both the public
+`loadRecords()` method and `recomputeExpenditure()`. A recompute threads one
+`LocalDate` through history assembly, damping-anchor selection, and
+persistence, so a clock rollover during network I/O cannot make a prior-day
+row look like the current row or change the assembled date range mid-call.
 
 ## Resolution: when a row is persisted
 
@@ -73,51 +59,26 @@ CLAUDE.md's "missing-data holding is a valid state and must be visible" rule.
 The implemented fix: every call always recomputes, but damping is anchored to
 the **last genuine (non-same-day) persisted estimate**, never to a same-day
 row's own already-damped output. When a same-day row already exists, it is
-**replaced in place** (delete then insert) rather than accumulated, since it
-represents "today's estimate", re-evaluated, not a new historical entry. See
-the doc comment directly above `recomputeExpenditure()` in
+**upserted in place** rather than accumulated, since it represents "today's
+estimate", re-evaluated, not a new historical entry. See the doc comment above
 `app/src/main/java/com/macrotrack/app/data/ExpenditureRepository.kt` for the
 full reasoning.
 
-## Still open: same-day delete-then-insert is not atomic
+## Resolved: same-day expenditure persistence is atomic and stale-safe
 
-The replace logic (delete a same-day row, then insert a fresh one) is two
-separate Postgrest HTTP requests with no database transaction wrapping them.
-If the process dies between the delete and the insert, today's row is lost.
-However, this is self-healing: the very next call to `recomputeExpenditure()`
-recomputes from the surviving prior-day anchor and lands on the identical
-value, so at most one derived (fully reconstructable) row is lost, never
-user-entered data.
+Migration `003_expenditure_daily_upsert.sql` adds a unique index on
+`(user_id, window_end)`. `recomputeExpenditure()` now uses one PostgREST
+upsert for a concrete result, so repeated refreshes and concurrent callers
+cannot create duplicate current-day rows or lose the row between a delete and
+an insert. It also threads one `today` value through history assembly,
+damping, and persistence, removing the old midnight boundary mismatch.
 
-A more serious case: two concurrent calls to `recomputeExpenditure()` (e.g.
-two coroutines, or two app instances) can each independently pass the
-same-day check, both insert, and leave two rows sharing the same `window_end`
-date. The computed *value* stays correct in this case (both rows hold the same
-number), but the duplicate row does not self-clean and wastes storage.
-
-Currently there are **zero callers** of `recomputeExpenditure()` or
-`getLatestEstimate()` anywhere in `app/src` (verified by search), so this is
-not reachable today. When the first caller is wired up (likely a ViewModel),
-flag this explicitly. Recommended fix: add a `unique (user_id, window_end)`
-constraint on `expenditure_estimates` via a migration, and switch the
-delete-then-insert to a single `upsert` operation, mirroring how
-`weight_trend_points` already uses upsert-by-primary-key in `TrendRepository`.
-
-## Still open: same-day persist transition leaves a stale row
-
-If `recomputeExpenditure()` previously persisted a result but a later call
-within the same day transitions to a non-persistable result (all of
-`estimateKcal`, `windowStart`, `windowEnd` become null), the old persisted
-row is left untouched. For example, if a user's entire logged history is
-deleted mid-session, `recomputeExpenditure()` correctly computes and returns
-a `holding` result with everything null, but skips the whole persist-or-replace
-block (since the guard condition `if (estimateKcal != null && ...)` fails) —
-leaving today's previously-persisted row in the table. A subsequent call to
-`getLatestEstimate()` then returns the stale `updating` row, disagreeing with
-what `recomputeExpenditure()` just returned.
-
-This is a rare edge case (entire logged history deletion mid-session is
-unusual), not fixed in this plan. Record it for future reference.
+If a same-day recompute no longer has enough information to produce a
+persistable result, it deletes only that day's derived row. This prevents
+`getLatestEstimate()` from returning a stale concrete estimate after the
+underlying history was removed. Existing databases with duplicate derived rows
+must still reconcile those rows before applying migration 003; the migration
+does not guess which derived record to keep.
 
 ## Still open: damping cap ambiguity in contract doc
 
@@ -143,20 +104,15 @@ already noted in `docs/WEIGHT_LOGGING_GAPS.md` and `docs/TREND_VISUALISATION_GAP
 for the sibling repositories. It is now also expenditure-state's problem, not
 a new discovery, just a new place it bites.
 
-## Still open: no scheduling/trigger for `recomputeExpenditure`
+## Resolved: Coach-triggered recomputation
 
 **Resolved** by `docs/superpowers/plans/2026-08-03-weight-coach-screens.md`:
 `CoachScreen`/`CoachViewModel` is now the first caller. It calls
 `ExpenditureRepository.recomputeExpenditure()` on every screen resume
 (`ON_RESUME`), though a 60-second throttle (see CoachViewModel.kt) skips the
 actual recompute if the last successful refresh was recent, to avoid redundant
-writes on rapid tab-switching or rotation. Left below for historical context.
-
-Like `TrendRepository.recomputeTrend`, `ExpenditureRepository.recomputeExpenditure`
-is entirely caller-driven -- nothing in this slice calls it. Whoever wires up
-the first caller needs to decide when recomputation happens: on app open, on
-a schedule, after every log/weigh-in, or on-demand when an expenditure
-screen opens. Not attempted here -- this slice is data-layer only.
+writes on rapid tab-switching or rotation. There is intentionally no background
+worker yet; recomputation is on-demand when the Coach screen is active.
 
 ## Still open: no test exercises `recomputeExpenditure` end-to-end
 
@@ -186,45 +142,37 @@ explicit user declaration the schema itself documents ("'fasted' is a user
 declaration, not an inference from missing entries"), not an inferred
 zero-fill -- an `UNLOGGED` day is untouched and still gets `null`.
 
-## Still open: nothing writes `daily_log_status`, so this slice cannot produce a non-holding estimate yet
+## Resolved: daily status is now an explicit user action
 
-The only writer of `daily_log_status` is `DayStatusRepository.setStatus`,
-and nothing in `app/src/main` calls it -- there is no ViewModel/UI layer yet
-(`MainActivity.kt` is the only non-repository, non-domain file in the app
-module). `AdaptiveEngine.nutritionIsCountable` requires `status ==
-"complete"`. With no status rows ever written, every assembled day is
-`DayStatus.UNLOGGED`, `nutritionDays` stays `0`, the coverage gate never
-passes, and `recomputeExpenditure()` stays in `holding` with a null anchor
-forever -- meaning **no row is ever actually inserted** with the code as it
-stands today, even for a user who logs food faithfully every day. Whether
-logging food should auto-mark a day `complete`, or whether that should stay
-an explicit end-of-day user action, is an undecided product question. This
-is the single biggest thing standing between this slice and a working
-expenditure state, and it belongs to whichever future slice adds day-status
-UI or an auto-completion rule.
+`DailyLogScreen` now exposes `complete`, `partial`, and `fasted` controls and
+persists them through `DayStatusRepository.setStatus`. It also allows an
+explicit `unlogged` reset. The app deliberately does **not** auto-mark a day
+complete merely because an entry exists: a user may have logged only part of a
+day. Likewise, it does not infer a fast from missing rows. A complete day
+requires at least one logged entry in the UI; a fasted day is the explicit
+zero-intake declaration that the assembler can count. This closes the prior
+path where every day remained `UNLOGGED` and expenditure could never leave
+`holding` because the status table was never written.
 
-## Still open: the weekly-check-in slice cannot reuse this pipeline without duplicating its subtlest logic
+The current screen also edits explicitly selected historical dates. The
+remaining limitation is intentional: it does not offer bulk status editing or
+an import path for historical day classifications.
+
+## Partially resolved: the weekly-check-in slice reuses assembled records, but not the persisted-estimate converter
 
 `WeeklyCheckIn.weeklyCheckIn` (already built) calls
 `AdaptiveEngine.estimateExpenditure` itself, needing the same full-history
 `DailyRecord` series and the same damping anchor this repository already
-assembles. But `ExpenditureRepository`'s interface exposes neither: only the
-final `ExpenditureEstimate`. A future check-in repository would have to
-re-implement full-history fetch → `WeightTrendCalculator.averageByLocalDay`
-→ `ExpenditureRecordAssembler.assemble` → damping-anchor selection from
-scratch -- and the anchor rule (same-day → `previous.previousEstimateKcal`,
-otherwise → `previous.estimateKcal`) exists only as prose in this file's
-`recomputeExpenditure` KDoc, not as a reusable, tested unit. Getting it
-wrong risks reintroducing the exact per-invocation drift bug this slice
-already spent three review rounds fixing, with a second, independent
-`estimateExpenditure` call that could silently disagree with the persisted
-row. Recommended before that slice starts: expose the assembled records and
-resolved anchor from `ExpenditureRepository` (e.g. a
-`suspend fun loadRecords(): Pair<List<DailyRecord>, Double?>`), and add a
-`PersistedExpenditureEstimate.toDomain(): ExpenditureEstimate` converter --
-today, every consumer that wants `explanation` back has to dig
-`inputs["explanation"]` out of a `JsonObject` by hand, exactly as
-`ExpenditureEstimateModelsTest` does.
+assembles. `ExpenditureRepository` now exposes `loadRecords():
+Pair<List<DailyRecord>, Double?>`, and `CheckInRepository` uses that seam, so
+it no longer has to re-implement full-history fetch →
+`WeightTrendCalculator.averageByLocalDay` → `ExpenditureRecordAssembler.assemble`
+→ damping-anchor selection. The remaining gap is narrower: the
+persisted-row-to-domain converter is still local to the repository, and the
+damping-anchor rule is documented in KDoc rather than exposed as a separately
+tested value object. A future refactor can add
+`PersistedExpenditureEstimate.toDomain()` and a shared result type without
+changing the current product path.
 
 ## Still open: a persisted row does not record which `EngineConfig` produced it
 
@@ -240,14 +188,11 @@ alone, whether it was computed under the old parameters or the new ones.
 
 ## Still open: unbounded row growth with no dedup
 
-A user who stays in a sustained `holding` state (see the "nothing writes
-`daily_log_status`" gap above -- today, every user) would, once something
-does call `recomputeExpenditure()` regularly, persist one row per calendar
-day of app usage indefinitely, even when every one of those rows is
-identical to the last. There is no dedup for consecutive unchanged rows and
-no retention policy, and `getLatestEstimate()` (the only reader) never
-surfaces the growing row count to anything. Related to, but distinct from,
-the concurrent-duplicate-rows gap above.
+A user who remains in a sustained `holding` state can still accumulate one
+derived row per calendar day of app usage indefinitely, even when every row is
+identical to the last. Migration 003 prevents same-day duplicates, but there is
+not yet a retention policy or cross-day deduplication, and
+`getLatestEstimate()` (the only reader) never surfaces the growing row count.
 
 ## Still open: damping cadence is a function of how often the app is opened, not of elapsed time
 
@@ -261,6 +206,40 @@ elapsed time or of how much new data arrived. This interacts directly with
 the still-open "no scheduling/trigger" gap above -- resolving that one
 (e.g. a background recompute on a fixed schedule) would also resolve this
 one.
+
+## Fixed during adversarial review: nullable estimate fields were defaulted to null across an upsert
+
+`NewExpenditureEstimate.previousEstimateKcal`, `.rawEstimateKcal`, and
+`.trendSlopeKgPerWeek` were declared with `= null` defaults. Once migration
+003 turned `recomputeExpenditure`'s write from delete-then-insert into
+`upsert(onConflict = "user_id,window_end")`, that became the same bug
+`NewCheckIn` was deliberately built to avoid: `encodeDefaults = false` omits a
+field left at its default from the JSON body, and PostgREST's upsert only
+updates columns present in the body, so a prior non-null value survived the
+update untouched.
+
+The path is real, not theoretical. `AdaptiveEngine.estimateExpenditure`'s
+holding branch can return `rawEstimateKcal`/`trendSlopeKgPerWeek` as `null`
+while still producing a persistable `estimateKcal`/`windowStart`/`windowEnd`,
+so a same-day transition from `updating` to `holding` (e.g. the user deletes
+log entries) would have left the earlier observed raw estimate and trend
+slope on the row indefinitely, misrepresenting what the engine actually
+observed -- a provenance violation, not just stale UI. Fixed by making all
+three required (non-defaulted) constructor parameters;
+`ExpenditureRepository.recomputeExpenditure` already passed all three
+explicitly off the engine result, so no call-site logic changed.
+`ExpenditureEstimateModelsTest` now pins that they encode as explicit JSON
+nulls.
+
+## Still open: migration 003 ships no duplicate-reconciliation query
+
+Migration 003 correctly refuses to guess which duplicate
+`(user_id, window_end)` derived row should win, but it also gives an operator
+nothing to run first -- applied to a database that already has duplicates it
+simply hard-fails. See the combined note for migrations 002 and 003 in
+`docs/WEEKLY_CHECKIN_GAPS.md` ("migrations 002 and 003 ship no
+duplicate-reconciliation query") for the pre-flight queries an operator needs
+and why resolving the results is a judgement call rather than a script.
 
 ## Still open: `window_start`/`window_end` do not mean what a future consumer may assume
 

@@ -11,6 +11,10 @@ interface FavoritesRepository {
     suspend fun list(): List<FoodFavorite>
     suspend fun addFood(foodId: String)
     suspend fun removeFood(foodId: String)
+    suspend fun addCustomFood(customFoodId: String)
+    suspend fun removeCustomFood(customFoodId: String)
+    suspend fun addRecipe(recipeId: String)
+    suspend fun removeRecipe(recipeId: String)
 }
 
 class SupabaseFavoritesRepository(private val client: SupabaseClient) : FavoritesRepository {
@@ -40,6 +44,36 @@ class SupabaseFavoritesRepository(private val client: SupabaseClient) : Favorite
             filter {
                 eq("user_id", userId)
                 eq("food_id", foodId)
+            }
+        }
+    }
+
+    override suspend fun addCustomFood(customFoodId: String) {
+        val payload = NewFoodFavorite(userId = requireUserId(), customFoodId = customFoodId)
+        client.postgrest.from("food_favorites").insert(payload)
+    }
+
+    override suspend fun removeCustomFood(customFoodId: String) {
+        val userId = requireUserId()
+        client.postgrest.from("food_favorites").delete {
+            filter {
+                eq("user_id", userId)
+                eq("custom_food_id", customFoodId)
+            }
+        }
+    }
+
+    override suspend fun addRecipe(recipeId: String) {
+        val payload = NewFoodFavorite(userId = requireUserId(), recipeId = recipeId)
+        client.postgrest.from("food_favorites").insert(payload)
+    }
+
+    override suspend fun removeRecipe(recipeId: String) {
+        val userId = requireUserId()
+        client.postgrest.from("food_favorites").delete {
+            filter {
+                eq("user_id", userId)
+                eq("recipe_id", recipeId)
             }
         }
     }

@@ -1,6 +1,7 @@
 package com.macrotrack.app.data.model
 
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonPrimitive
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
@@ -27,7 +28,9 @@ class LogEntryModelsTest {
               "carbs_g": 0,
               "fat_g": 5.4,
               "display_name": "Grilled Chicken Breast",
-              "notes": null
+              "notes": null,
+              "nutrients": {"sodium_100g": 74},
+              "source_snapshot": {"kind": "food", "source": "openfoodfacts"}
             }
         """.trimIndent()
 
@@ -39,6 +42,8 @@ class LogEntryModelsTest {
         assertNull(entry.customFoodId)
         assertEquals(248.0, entry.calories, 0.001)
         assertEquals("Grilled Chicken Breast", entry.displayName)
+        assertEquals("74", entry.nutrients["sodium_100g"]?.jsonPrimitive?.content)
+        assertEquals("openfoodfacts", entry.sourceSnapshot["source"]?.jsonPrimitive?.content)
     }
 
     @Test

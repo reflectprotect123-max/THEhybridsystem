@@ -23,10 +23,15 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.macrotrack.app.data.CheckInRepository
 import com.macrotrack.app.data.ExpenditureRepository
+import com.macrotrack.app.data.MacroProgramRepository
+import com.macrotrack.app.data.WeightRepository
 import com.macrotrack.app.data.model.CheckInModuleDto
+import com.macrotrack.app.data.model.MacroProgram
 import com.macrotrack.app.data.model.PersistedCheckIn
+import com.macrotrack.app.data.model.WeightEntry
 import com.macrotrack.app.domain.ExpenditureEstimate
 import com.macrotrack.app.ui.theme.MacroTrackTheme
+import java.time.Instant
 import java.time.LocalDate
 
 @Composable
@@ -97,30 +102,54 @@ private fun CheckInSection(uiState: CoachUiState, viewModel: CoachViewModel) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text("This week's check-in", style = MaterialTheme.typography.titleLarge)
 
+        val rateLabel = when {
+            uiState.targetRateKgPerWeek < 0 -> "losing"
+            uiState.targetRateKgPerWeek > 0 -> "gaining"
+            else -> "maintaining"
+        }
+        Text(
+            "Goal rate: ${"%.1f".format(uiState.targetRateKgPerWeek)} kg/week ($rateLabel)",
+            style = MaterialTheme.typography.bodyLarge,
+        )
+        Slider(
+            value = uiState.targetRateKgPerWeek.toFloat(),
+            onValueChange = { viewModel.onTargetRateChanged(it.toDouble()) },
+            valueRange = -1f..1f,
+            steps = 19,
+            enabled = !uiState.isSavingGoal && !uiState.isCheckingIn,
+        )
+        if (uiState.activeProgram == null || uiState.hasUnsavedGoal) {
+            Text(
+                if (uiState.activeProgram == null) {
+                    "Choose a rate and save it. Your goal will be kept between sessions."
+                } else {
+                    "Your slider change is not saved yet."
+                },
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            Button(
+                onClick = viewModel::saveGoal,
+                enabled = !uiState.isSavingGoal,
+            ) {
+                Text(if (uiState.isSavingGoal) "Saving..." else "Save goal")
+            }
+        } else {
+            Text("Saved goal: ${uiState.activeProgram.name}", style = MaterialTheme.typography.bodySmall)
+        }
+
         val checkIn = uiState.checkIn
         when {
-            checkIn == null -> {
-                val rateLabel = when {
-                    uiState.targetRateKgPerWeek < 0 -> "losing"
-                    uiState.targetRateKgPerWeek > 0 -> "gaining"
-                    else -> "maintaining"
-                }
-                Text(
-                    "Goal rate: ${"%.1f".format(uiState.targetRateKgPerWeek)} kg/week ($rateLabel)",
-                    style = MaterialTheme.typography.bodyLarge,
-                )
-                Slider(
-                    value = uiState.targetRateKgPerWeek.toFloat(),
-                    onValueChange = { viewModel.onTargetRateChanged(it.toDouble()) },
-                    valueRange = -1f..1f,
-                    steps = 19,
-                )
+            checkIn == null && uiState.activeProgram != null && !uiState.hasUnsavedGoal -> {
                 Button(onClick = viewModel::checkIn, enabled = !uiState.isCheckingIn) {
                     Text(if (uiState.isCheckingIn) "Checking in..." else "Check in")
                 }
             }
+            checkIn == null -> Text("Save your goal to unlock the weekly check-in.", style = MaterialTheme.typography.bodyMedium)
             checkIn.status == "held" -> {
                 Text("Not ready yet -- ${checkIn.explanation}", style = MaterialTheme.typography.bodyLarge)
+                Button(onClick = viewModel::checkIn, enabled = !uiState.isCheckingIn) {
+                    Text(if (uiState.isCheckingIn) "Checking in..." else "Run check-in again")
+                }
             }
             checkIn.status == "pending" -> {
                 Text(checkIn.explanation, style = MaterialTheme.typography.bodyLarge)
@@ -145,6 +174,16 @@ private fun CheckInSection(uiState: CoachUiState, viewModel: CoachViewModel) {
             else -> {
                 // "accepted" or "declined"
                 Text("This week: ${checkIn.status}.", style = MaterialTheme.typography.bodyLarge)
+                if (checkIn.status == "accepted") {
+                    uiState.appliedDayTarget?.let { target ->
+                        Text(
+                            "Next week's target: ${target.calories.toInt()} kcal · " +
+                                "${target.proteinG.toInt()}g protein · " +
+                                "${target.carbsG.toInt()}g carbs · ${target.fatG.toInt()}g fat",
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                    }
+                }
             }
         }
     }
@@ -157,15 +196,54 @@ private class PreviewExpenditureRepository(private val estimate: ExpenditureEsti
 }
 
 private class PreviewCheckInRepository(private val checkIn: PersistedCheckIn?) : CheckInRepository {
-    override suspend fun getCheckIn(weekStart: LocalDate): PersistedCheckIn? = checkIn
+    override suspend fun getCheckIn(weekStart: LocalDate, programId: String?): PersistedCheckIn? = checkIn
     override suspend fun recomputeCheckIn(
         weekStart: LocalDate,
         weekEnd: LocalDate,
         targetRateKgPerWeek: Double,
+        programId: String?,
         proteinGPerKg: Double,
         fatGPerKg: Double,
     ) = error("not used in preview")
-    override suspend fun resolve(weekStart: LocalDate, accepted: Boolean): PersistedCheckIn = error("not used in preview")
+    override suspend fun resolve(weekStart: LocalDate, accepted: Boolean, programId: String?): PersistedCheckIn = error("not used in preview")
+}
+
+private class PreviewMacroProgramRepository(private val program: MacroProgram?) : MacroProgramRepository {
+    override suspend fun getActive(): MacroProgram? = program
+    override suspend fun saveActive(targetRateKgPerWeek: Double, name: String): MacroProgram =
+        program ?: error("not used in preview")
+    override suspend fun getDayTarget(date: LocalDate, programId: String): com.macrotrack.app.data.model.MacroProgramDay? = null
+    override suspend fun saveDayTargets(
+        programId: String,
+        startDate: LocalDate,
+        endDate: LocalDate,
+        calories: Double,
+        proteinG: Double,
+        carbsG: Double,
+        fatG: Double,
+    ): List<com.macrotrack.app.data.model.MacroProgramDay> = emptyList()
+}
+
+private class PreviewCoachWeightRepository(private val hasWeighIn: Boolean) : WeightRepository {
+    override suspend fun listEntries(since: Instant): List<WeightEntry> = if (hasWeighIn) {
+        listOf(
+            WeightEntry(
+                id = "preview-weight",
+                userId = "preview-user",
+                measuredAt = "2026-08-03T08:00:00Z",
+                weightKg = 80.0,
+                source = "manual",
+                createdAt = "2026-08-03T08:00:00Z",
+            ),
+        )
+    } else {
+        emptyList()
+    }
+
+    override suspend fun logWeight(measuredAt: Instant, weightKg: Double, source: String, note: String?): WeightEntry =
+        error("not used in preview")
+
+    override suspend fun deleteEntry(entryId: String) = Unit
 }
 
 @Preview(showBackground = true)
@@ -203,6 +281,21 @@ private fun CoachScreenPreview() {
             viewModel = CoachViewModel(
                 expenditureRepository = PreviewExpenditureRepository(fakeEstimate),
                 checkInRepository = PreviewCheckInRepository(fakeCheckIn),
+                macroProgramRepository = PreviewMacroProgramRepository(
+                    MacroProgram(
+                        id = "preview-program",
+                        userId = "preview-user",
+                        name = "My macro goal",
+                        mode = "manual",
+                        goal = "lose",
+                        targetRateKgPerWeek = -0.2,
+                        startDate = "2026-08-01",
+                        status = "active",
+                        createdAt = "2026-08-01T08:00:00Z",
+                        updatedAt = "2026-08-01T08:00:00Z",
+                    ),
+                ),
+                weightRepository = PreviewCoachWeightRepository(hasWeighIn = true),
             ),
             onLogWeight = {},
         )

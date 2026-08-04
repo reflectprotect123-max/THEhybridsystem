@@ -1,23 +1,82 @@
 # MacroTrack — handoff (2026-08-04)
 
+## Native Android rebuild status
+
+This handoff is for a native Android project, not a React Native conversion.
+The client is a standard Gradle Android application using Kotlin, Jetpack
+Compose, Android Navigation, CameraX, bundled ML Kit, and the Supabase Kotlin
+client. No WebView, JavaScript bridge, Expo runtime, or React dependency is
+present in `app/`.
+
+The native-build hardening completed in this pass:
+
+- corrected the barcode screen's lifecycle-owner import to
+  `androidx.lifecycle.compose.LocalLifecycleOwner`;
+- added the required `lifecycle-runtime-compose` dependency;
+- removed placeholder `TODO()` implementations from the Android unit-test
+  fakes;
+- confirmed the configured AGP, Kotlin, Compose, AndroidX, CameraX, ML Kit,
+  Supabase, Ktor, and serialization coordinates are published;
+- added `NATIVE_ANDROID_HANDOFF.md` with the exact Claude build and device
+  acceptance sequence.
+
 Written so any AI/dev picking this up (this doc was written for a handoff to
 ChatGPT, but applies to anyone) can continue with zero prior context. Read
 `CLAUDE.md` next — it holds the non-negotiable product/data rules that bind
 every future change.
 
+## Latest continuation in this workspace
+
+After the barcode handoff, the persisted-goal and custom-food slices were
+continued:
+
+- `MacroProgramRepository` now loads/saves the active goal from
+  `macro_programs`; changing the signed rate pauses the old program and starts
+  a new one, preserving check-in provenance.
+- `weekly_check_ins.program_id` is now written and used to filter the current
+  program's check-in.
+- Migration `002_active_macro_program.sql` enforces at most one active program
+  per user. It intentionally does not delete duplicate historical data; if an
+  existing database has duplicate active rows, reconcile them explicitly
+  before applying that migration.
+- Food Search now exposes custom-food creation. The form validates user-entered
+  serving and macro values, persists the food, and opens Add Log Entry for it.
+
+The latest continuation also closed these product gaps:
+
+- Daily Log navigates across historical dates; food, custom-food, recipe,
+  quick-add, and day-status writes are attached to the selected date.
+- Food logging defaults to the source serving quantity rather than `1` unit,
+  preventing a 100 g food from silently logging as 1 g.
+- Quick-add logging, favorite toggles for foods/custom foods/recipes, and a
+  deterministic recipe builder are available from Food Search.
+- Accepting a ready check-in persists its proposed macro targets across the
+  next program week in `macro_program_days` with `source = accepted_check_in`.
+- Migration `004_owner_reference_policies.sql` prevents user-owned custom
+  foods and recipes being referenced across accounts through logs, recipes,
+  or favorites.
+- Migration `005_checkin_program_provenance.sql` keys weekly check-ins by
+  `(user_id, program_id, week_start)` so changing goals during a week cannot
+  overwrite the prior program's proposal.
+- The deterministic ready check-in now emits the documented `program_update`
+  module in both Python and Kotlin.
+
+The current release-candidate verification and environment boundary are
+summarized in `docs/RELEASE_CANDIDATE_2026-08-04.md`.
+
+Python regression tests still pass. Android compilation remains unverified in
+this workspace because Java cannot resolve the Android Gradle Plugin from
+Google Maven and no Android SDK is installed; the exact failure is recorded in
+the continuation log.
+
 ## Where the real repo lives
 
-- GitHub: https://github.com/reflectprotect123-max/THEhybridsystem
+- GitHub: `reflectprotect123-max/thehybridsystem`
 - Branch: `claude/macro-factor-app-dev-6twv5o` (everything below is on this
   branch, fully pushed)
 - Open PR: **#1** — https://github.com/reflectprotect123-max/THEhybridsystem/pull/1
   (base branch `main`, created against the project's actual root commit —
   see the PR description for why a `main` branch had to be created)
-- Clone directly onto this branch:
-  ```bash
-  git clone -b claude/macro-factor-app-dev-6twv5o \
-    https://github.com/reflectprotect123-max/THEhybridsystem.git
-  ```
 - This zip is a point-in-time snapshot of that branch. **Prefer cloning from
   GitHub over unzipping** if there's any doubt about freshness — the repo is
   the source of truth, not this file.
@@ -31,9 +90,13 @@ clean. None of it has ever been compiled (see "The one big caveat" below) —
 it's been verified by careful static review against real library/API
 sources, not by a compiler.
 
-- **Supabase schema** — `supabase/migrations/001_macro_foundation.sql`.
-  Foods, custom foods, recipes, food logs, day status, weights, weight
-  trend points, expenditure estimates, weekly check-ins, RLS policies.
+- **Supabase schema** — `supabase/migrations/001_macro_foundation.sql` plus
+  migrations `002_active_macro_program.sql`,
+  `003_expenditure_daily_upsert.sql`, and
+  `004_owner_reference_policies.sql`, and
+  `005_checkin_program_provenance.sql`. Foods, custom foods, recipes, food logs,
+  day status, weights, weight trend points, expenditure estimates, weekly
+  check-ins, macro-program day targets, and RLS policies are represented.
 - **Adaptive engine** — `adaptive_engine.py` (Python reference,
   deterministic, tested) ported to Kotlin at
   `app/src/main/java/com/macrotrack/app/domain/{AdaptiveEngine,
@@ -47,16 +110,38 @@ sources, not by a compiler.
   `WeightRepository`, `TrendRepository`, `ExpenditureRepository`,
   `CheckInRepository`, `AuthRepository`. All wired together in
   `AppContainer.kt`.
+- **Derived-estimate persistence** — migration
+  `003_expenditure_daily_upsert.sql` enforces one expenditure row per user
+  and window-end date; recomputes use atomic upsert and remove a stale current
+  row only when fresh data cannot support an estimate.
 - **Compose UI (full core app)** —
   `app/src/main/java/com/macrotrack/app/ui/`:
   - `theme/` — Material3 theme, calm sage-green/warm-sand palette
   - `nav/` — bottom-tab NavHost (Daily Log / Weight / Coach), auth-gated
   - `auth/` — sign-in/sign-up
-  - `dailylog/` — today's entries + totals (never renders an unlogged day
-    as zero — see CLAUDE.md rule #2)
-  - `search/` — Food Search + Add Log Entry (the core logging loop)
+  - `dailylog/` — historical-date entries + totals, explicit complete/partial/fasted
+    status controls, and owner-scoped soft-delete (never renders an unlogged
+    day as zero — see CLAUDE.md rule #2)
+  - `search/` — Food Search + Add Log Entry, custom foods, quick-add, favorites,
+    and recipe creation (the core logging loop)
   - `weight/` — log a weigh-in, history, hand-rolled Canvas trend sparkline
   - `coach/` — expenditure estimate + weekly check-in accept/decline flow
+- **Barcode camera integration** — `BarcodeScannerScreen.kt` uses CameraX
+  1.6.1 and bundled ML Kit barcode scanning 17.3.0. It requests camera
+  permission, scans common retail formats, returns ML Kit's raw value, and
+  routes it through the existing exact `FoodRepository.findByBarcode()` path.
+  An unmatched code is reported without UPC/EAN conversion or invented food
+  data. See `docs/BARCODE_SCANNER_GAPS.md` for the verification boundary.
+- **Custom-food creation UI** — `Food Search → Create custom food` validates
+  user-entered serving and macro values, persists through the owner-scoped
+  repository, and opens Add Log Entry for the newly created food.
+- **Daily status controls** — Daily Log now reads and writes the explicit
+  `daily_log_status` row. A completed day requires a logged entry; fasting is
+  never inferred from an empty log. The screen also exposes the existing
+  owner-scoped soft-delete for log entries.
+- **Accepted target persistence** — an accepted ready check-in writes the
+  next week's day targets through the active macro program, so acceptance has
+  a durable product effect rather than only changing check-in status.
 - **Data import pipeline** (Python, root of repo) — `import_openfoodfacts.py`,
   `import_ausnut.py`, `seed_common.py`. Tested against fixtures
   (`tests/test_importers.py`), never run against real production data (see
@@ -64,8 +149,8 @@ sources, not by a compiler.
 
 ## What's NOT done
 
-In `CLAUDE.md`'s own recommended order, everything through step 5 is done;
-6 and 7 are not started:
+In `CLAUDE.md`'s own recommended order, everything through step 6 is done;
+step 7 is not started:
 
 1. ~~Validate migration~~ — done
 2. ~~Food repository~~ — done
@@ -73,16 +158,17 @@ In `CLAUDE.md`'s own recommended order, everything through step 5 is done;
 4. ~~Port adaptive engine to Kotlin~~ — done
 5. ~~Weight logging, trend, expenditure state, weekly check-in~~ — done
    (both backend and UI)
-6. **Barcode camera integration** — not started. Exact-barcode lookup
-   already works in `FoodRepository`; this is "add a camera scanner that
-   calls it," not new backend work.
+6. ~~Barcode camera integration~~ — implemented, but not yet compiled or
+   tested on a physical Android device. Exact-barcode lookup already existed
+   in `FoodRepository`; the camera now calls that path.
 7. **OCR / URL recipe import / speech / image AI adapters** — not started.
    CLAUDE.md is explicit these must never silently overwrite a verified
    food.
 
 Also not done, not in CLAUDE.md's list but real gaps:
 
-- **The Android module has never been compiled, anywhere, ever.** See below
+- **The Android module has never been compiled, anywhere, ever.** The new
+  CameraX/ML Kit slice is included in this caveat. See below
   — this is the single most important unresolved risk in the whole repo.
 - **No real Supabase project has been created or seeded** — schema and
   import pipeline are ready, nothing has actually been run against a live
@@ -90,10 +176,11 @@ Also not done, not in CLAUDE.md's list but real gaps:
 - **No real AUSNUT/NUTTAB or OpenFoodFacts import has been run** — see
   "Data import" below, this needs an environment with real internet access.
 - App icon/branding, Play Store packaging — not started.
-- `macro_programs` (a real, editable, persisted user goal-rate) — not
-  started; the Coach screen's rate slider is a session-only UI control, not
-  yet backed by a table (documented in
-  `docs/WEEKLY_CHECKIN_GAPS.md`).
+- **Macro programs** — the active manual goal-rate is now persisted through
+  `MacroProgramRepository`, weekly check-ins carry its `program_id`, and
+  accepted check-ins create next-week day targets. Full program history,
+  pause/complete controls, profile-driven protein/fat preference editing, and
+  target editing remain future product slices.
 
 ## The one big caveat — nothing has ever compiled
 
@@ -121,26 +208,26 @@ not a compiler.** The very first thing that must happen on a real machine:
 ./gradlew :app:assembleDebug
 ```
 
-Known specific risks flagged in the plan docs (search
-`docs/superpowers/plans/*.md` for "unverified" if you want the full list):
-- `androidx.navigation:navigation-compose:2.9.0`'s exact patch version was
-  never confirmed resolvable against Compose BOM `2026.06.00`
-- `Icons.Filled.Add`'s assumption that `material-icons-core` is still a
-  transitive dependency of `material3` (recent Material3 releases have been
-  removing this) — if it doesn't resolve, either add
-  `implementation("androidx.compose.material:material-icons-core")`
-  explicitly or replace with `Text("+")`
-- AGP `9.3.0`, Compose BOM `2026.06.00`, `compileSdk`/`targetSdk = 37` were
-  never confirmed to actually exist as real published versions — check
-  Android Studio's SDK Manager / Maven Central before first sync
+The previous version-coordinate and icon-pack warnings are closed: the
+coordinates are now checked against the published repositories, and the UI
+uses text-based navigation/FAB affordances instead of relying on a transitive
+Material icon dependency. The remaining build boundary is environmental:
+this workspace has no Android SDK and Java cannot reach Google Maven, so a
+real Android compile, APK, emulator run, and physical-device camera test must
+be done by Claude or Android Studio.
 
 ## Setting up to actually build and run it
 
 1. **Get a Supabase project** (user already has one). From the dashboard:
    Project Settings → API → copy the Project URL and the **anon/publishable**
    key. **Never** use the service-role key here (CLAUDE.md rule #6).
-2. **Apply the schema**: run `supabase/migrations/001_macro_foundation.sql`
-   in the Supabase SQL editor (or `supabase db push` via the CLI).
+2. **Apply the schema**: run all files in `supabase/migrations/` in filename
+   order (or use `supabase db push`). Migration 002 adds the one-active-goal
+   invariant; migration 003 makes same-day expenditure upserts atomic;
+   migration 004 hardens cross-owner references; and migration 005 preserves
+   check-in provenance when a goal changes during a week. Existing duplicate
+   active-program or same-day estimate rows must be reconciled before those
+   indexes are applied.
 3. **Create `local.properties`** at the repo root (gitignored, never commit
    it):
    ```properties
@@ -150,12 +237,16 @@ Known specific risks flagged in the plan docs (search
 4. **Open in Android Studio**, sync Gradle, then run the two commands in
    "The one big caveat" above. Fix whatever the compiler finds — expect a
    handful of real issues given nothing here has compiled before.
-5. **Manually walk the app** once it builds: sign up → sign in → search a
-   food → log it → see it on Daily Log → log a weigh-in on Weight → see the
-   trend sparkline → open Coach → see the expenditure estimate → adjust the
-   goal-rate slider → check in → accept/decline → sign out. Rotate the
-   device on each screen (there were real config-change bugs already found
-   and fixed once — check nothing regressed).
+5. **Manually walk the app** once it builds: sign up → sign in → move Daily
+   Log to a previous date → create and log a custom food → quick-add a manual
+   entry → favorite a result → create a recipe with food/custom-food
+   ingredients → search and log the recipe → scan a known barcode → confirm
+   exact match → scan an unknown barcode and confirm the manual-search error →
+   log a weigh-in on Weight → see the trend sparkline → open Coach → see the
+   expenditure estimate → adjust the goal-rate slider → check in → accept a
+   ready target and verify next-week `macro_program_days` rows → sign out.
+   Rotate the device on each screen (there were real config-change bugs
+   already found and fixed once — check nothing regressed).
 
 ## Data import — why it wasn't run, and exactly how to run it
 

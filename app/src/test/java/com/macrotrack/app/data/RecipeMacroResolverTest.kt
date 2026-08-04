@@ -16,7 +16,10 @@ import org.junit.Test
  * actually calls (getById/getServings on FoodRepository, getById on
  * CustomFoodRepository, getItems on RecipeRepository) are implemented for
  * real; the rest are TODO() since Kotlin requires every interface member
- * to have a body but nothing here exercises them.
+ * to have a body but nothing here exercises them. TODO()'s NotImplementedError
+ * is deliberately NOT IllegalStateException, so a fake accidentally being
+ * reached can never be mistaken for the IllegalStateException the throwing
+ * tests below assert on.
  */
 private class FakeFoodRepository(
     private val foods: Map<String, Food> = emptyMap(),
@@ -63,6 +66,7 @@ private class FakeRecipeRepository(
     ): RecipeItem = TODO("not used in this test")
     override suspend fun getItems(recipeId: String): List<RecipeItem> = items[recipeId] ?: emptyList()
     override suspend fun getById(id: String): Recipe? = TODO("not used in this test")
+    override suspend fun delete(id: String): Unit = TODO("not used in this test")
 }
 
 class RecipeMacroResolverTest {

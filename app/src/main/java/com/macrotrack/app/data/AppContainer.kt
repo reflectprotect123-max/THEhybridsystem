@@ -21,4 +21,5 @@ class AppContainer {
     val checkInRepository: CheckInRepository by lazy {
         SupabaseCheckInRepository(client, expenditureRepository, weightRepository)
     }
+    val macroProgramRepository: MacroProgramRepository by lazy { SupabaseMacroProgramRepository(client) }
 }

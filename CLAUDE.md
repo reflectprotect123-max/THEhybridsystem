@@ -116,6 +116,12 @@ proof that our parameters are correct or identical. Record unresolved gaps in
 
 ## Git discipline
 
+Native Android boundary: the client must remain a standard Kotlin/Jetpack
+Compose Android application built by the `:app` Gradle module. Do not replace
+it with React Native, Expo, Flutter, WebView, or a JavaScript bridge. Camera
+access must use Android CameraX/ML Kit, and backend access must use the native
+Supabase Kotlin client with the publishable/anon key only.
+
 This is a new repository. Keep commits small and intentional. Before handing
 back work, report:
 
@@ -123,4 +129,3 @@ back work, report:
 * which tests/builds passed;
 * which checks could not run and why; and
 * any remaining product or evidence gap.
-

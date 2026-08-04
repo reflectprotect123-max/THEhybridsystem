@@ -8,11 +8,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -22,6 +20,8 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -33,6 +33,7 @@ import com.macrotrack.app.data.LogRepository
 import com.macrotrack.app.data.model.CustomFood
 import com.macrotrack.app.data.model.DailyLogStatus
 import com.macrotrack.app.data.model.DailyTotals
+import com.macrotrack.app.data.model.DayStatus
 import com.macrotrack.app.data.model.Food
 import com.macrotrack.app.data.model.FoodLogEntry
 import com.macrotrack.app.ui.theme.MacroTrackTheme
@@ -42,14 +43,14 @@ import kotlinx.coroutines.flow.StateFlow
 import java.time.LocalDate
 
 @Composable
-fun DailyLogScreen(viewModel: DailyLogViewModel, onAddFood: () -> Unit) {
+fun DailyLogScreen(viewModel: DailyLogViewModel, onAddFood: (LocalDate) -> Unit) {
     val uiState by viewModel.uiState.collectAsState()
 
     // DailyLogViewModel is now scoped to its NavBackStackEntry (see MacroTrackNavHost), so its
     // init{} block only runs once for the lifetime of that backstack entry -- it will NOT re-run
     // when the user navigates back here from Add Log Entry after saving. Re-fetch on every
-    // ON_RESUME (first entry to the screen *and* every subsequent return to it) so today's totals
-    // reflect entries logged elsewhere.
+    // ON_RESUME (first entry to the screen *and* every subsequent return to it) so the selected
+    // day's totals reflect entries logged elsewhere.
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner, viewModel) {
         val observer = LifecycleEventObserver { _, event ->
@@ -65,8 +66,12 @@ fun DailyLogScreen(viewModel: DailyLogViewModel, onAddFood: () -> Unit) {
 
     Scaffold(
         floatingActionButton = {
-            FloatingActionButton(onClick = onAddFood) {
-                Icon(Icons.Filled.Add, contentDescription = "Add food")
+            FloatingActionButton(onClick = { onAddFood(uiState.selectedDate) }) {
+                Text(
+                    "+",
+                    modifier = Modifier.semantics { contentDescription = "Add food" },
+                    style = MaterialTheme.typography.headlineSmall,
+                )
             }
         },
         contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0),
@@ -76,46 +81,143 @@ fun DailyLogScreen(viewModel: DailyLogViewModel, onAddFood: () -> Unit) {
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
-                Text("Today", style = MaterialTheme.typography.headlineMedium)
+                Text(
+                    if (uiState.selectedDate == LocalDate.now()) "Today" else uiState.selectedDate.toString(),
+                    style = MaterialTheme.typography.headlineMedium,
+                )
                 TextButton(onClick = viewModel::signOut) {
                     Text("Sign out")
                 }
             }
 
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+            ) {
+                TextButton(onClick = { viewModel.moveDate(-1) }) { Text("Previous") }
+                TextButton(
+                    onClick = viewModel::goToToday,
+                    enabled = uiState.selectedDate != LocalDate.now(),
+                ) { Text("Today") }
+                // Forward navigation stops at today: the adaptive engine only looks back from
+                // today, so food logged against a future date would be invisible to it.
+                TextButton(
+                    onClick = { viewModel.moveDate(1) },
+                    enabled = uiState.selectedDate.isBefore(LocalDate.now()),
+                ) { Text("Next") }
+            }
+
             when {
                 uiState.isLoading -> CircularProgressIndicator(modifier = Modifier.padding(top = 24.dp))
-                uiState.errorMessage != null -> Text(
-                    text = uiState.errorMessage.orEmpty(),
-                    color = MaterialTheme.colorScheme.error,
-                    modifier = Modifier.padding(top = 16.dp),
-                )
-                uiState.totals == null -> Text(
-                    text = "Nothing logged yet today.",
-                    style = MaterialTheme.typography.bodyLarge,
-                    modifier = Modifier.padding(top = 16.dp),
-                )
+                uiState.loadFailed -> {
+                    // The load for the selected date failed, so this day's entries, totals and
+                    // status are *unknown* -- not empty. Render only the error (plus a retry) so
+                    // nothing can be mistaken for real data belonging to this date, and so the
+                    // day-status controls cannot act on data we do not have.
+                    Text(
+                        text = uiState.errorMessage ?: "Couldn't load this day's log",
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(top = 16.dp),
+                    )
+                    TextButton(onClick = { viewModel.refresh() }) { Text("Retry") }
+                }
                 else -> {
-                    val totals = uiState.totals!!
-                    Column(modifier = Modifier.padding(vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text("${totals.calories.toInt()} kcal", style = MaterialTheme.typography.titleLarge)
+                    if (uiState.errorMessage != null) {
                         Text(
-                            "${totals.proteinG.toInt()}g protein · ${totals.carbsG.toInt()}g carbs · ${totals.fatG.toInt()}g fat",
-                            style = MaterialTheme.typography.bodyMedium,
+                            text = uiState.errorMessage.orEmpty(),
+                            color = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.padding(top = 16.dp),
                         )
                     }
-                    LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        items(uiState.entries) { entry ->
-                            Column(modifier = Modifier.padding(vertical = 4.dp)) {
-                                Text(entry.displayName, style = MaterialTheme.typography.titleMedium)
-                                Text(
-                                    "${entry.meal} · ${entry.calories.toInt()} kcal",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                )
+                    DayStatusSection(uiState, viewModel)
+                    if (uiState.totals == null) {
+                        Text(
+                            text = "Nothing logged yet for this day.",
+                            style = MaterialTheme.typography.bodyLarge,
+                            modifier = Modifier.padding(top = 16.dp),
+                        )
+                    } else {
+                        val totals = uiState.totals!!
+                        Column(
+                            modifier = Modifier.padding(vertical = 12.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                        ) {
+                            Text("${totals.calories.toInt()} kcal", style = MaterialTheme.typography.titleLarge)
+                            Text(
+                                "${totals.proteinG.toInt()}g protein · ${totals.carbsG.toInt()}g carbs · ${totals.fatG.toInt()}g fat",
+                                style = MaterialTheme.typography.bodyMedium,
+                            )
+                        }
+                        LazyColumn(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            items(uiState.entries) { entry ->
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(entry.displayName, style = MaterialTheme.typography.titleMedium)
+                                        Text(
+                                            "${entry.meal} · ${entry.calories.toInt()} kcal",
+                                            style = MaterialTheme.typography.bodyMedium,
+                                        )
+                                    }
+                                    TextButton(
+                                        onClick = { viewModel.deleteEntry(entry.id) },
+                                        enabled = uiState.deletingEntryId == null,
+                                    ) {
+                                        Text(if (uiState.deletingEntryId == entry.id) "Deleting…" else "Delete")
+                                    }
+                                }
                             }
                         }
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun DayStatusSection(uiState: DailyLogUiState, viewModel: DailyLogViewModel) {
+    val savedStatus = uiState.dayStatus?.status
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text("Day status", style = MaterialTheme.typography.titleMedium)
+        Text(
+            when (savedStatus) {
+                DayStatus.COMPLETE -> "Complete — this day can count toward coaching data."
+                DayStatus.PARTIAL -> "Partial — more food may still be missing."
+                DayStatus.FASTED -> "Fasted — explicitly declared, so it is not treated as an unlogged day."
+                DayStatus.UNLOGGED -> "Unlogged — this day will not count toward coaching data."
+                else -> "Choose a status so coaching can distinguish missing data from a completed day."
+            },
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            listOf(
+                DayStatus.COMPLETE to "Complete",
+                DayStatus.PARTIAL to "Partial",
+                DayStatus.FASTED to "Fasted",
+            ).forEach { (status, label) ->
+                FilterChip(
+                    selected = savedStatus == status,
+                    onClick = { viewModel.setDayStatus(status) },
+                    enabled = !uiState.isSavingStatus,
+                    label = { Text(label) },
+                )
+            }
+        }
+        TextButton(
+            onClick = { viewModel.setDayStatus(DayStatus.UNLOGGED) },
+            enabled = !uiState.isSavingStatus && savedStatus != null && savedStatus != DayStatus.UNLOGGED,
+        ) {
+            Text(if (uiState.isSavingStatus) "Saving…" else "Clear status")
         }
     }
 }
@@ -191,7 +293,7 @@ private fun DailyLogScreenPreview() {
                 dayStatusRepository = PreviewDayStatusRepository(),
                 authRepository = PreviewAuthRepository(),
             ),
-            onAddFood = {},
+            onAddFood = { _ -> },
         )
     }
 }

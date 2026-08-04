@@ -41,6 +41,12 @@ class SupabaseCustomFoodRepository(private val client: SupabaseClient) : CustomF
         fatG: Double,
         barcode: String?,
     ): CustomFood {
+        require(name.isNotBlank()) { "Custom food name must not be blank" }
+        require(servingQty.isFinite() && servingQty > 0) { "servingQty must be greater than 0" }
+        require(servingUnit.isNotBlank()) { "servingUnit must not be blank" }
+        require(listOf(calories, proteinG, carbsG, fatG).all { it.isFinite() && it >= 0 }) {
+            "Custom food nutrition values must be finite and non-negative"
+        }
         val payload = NewCustomFood(
             userId = requireUserId(),
             name = name,

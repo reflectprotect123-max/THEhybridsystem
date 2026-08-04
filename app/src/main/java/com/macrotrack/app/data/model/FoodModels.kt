@@ -3,6 +3,8 @@ package com.macrotrack.app.data.model
 import com.macrotrack.app.domain.Scalable
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.buildJsonObject
 
 /**
  * Mirrors `public.foods` in supabase/migrations/001_macro_foundation.sql.
@@ -29,6 +31,8 @@ data class Food(
     @SerialName("nutrition_basis_qty") val nutritionBasisQty: Double,
     @SerialName("nutrition_basis_unit") val nutritionBasisUnit: String,
     @SerialName("serving_size_text") val servingSizeText: String? = null,
+    /** Original source nutrients, kept at the source denominator. */
+    val nutrients: JsonObject = buildJsonObject { },
 ) : Scalable
 
 /** Mirrors `public.food_servings`. */

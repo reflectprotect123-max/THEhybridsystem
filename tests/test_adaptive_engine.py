@@ -54,6 +54,17 @@ class AdaptiveEngineTests(unittest.TestCase):
         self.assertEqual(targets["fat_g"], 72.0)
         self.assertGreaterEqual(targets["carbs_g"], 0)
 
+        result = weekly_check_in(
+            self.make_records(),
+            previous_expenditure_kcal=2800,
+            body_weight_kg=90,
+            target_rate_kg_per_week=-0.3,
+        )
+        self.assertEqual(
+            [{"key": "program_update", "action": "review and accept the proposed calorie and macro targets"}],
+            result["modules"],
+        )
+
     def test_check_in_returns_hold_modules(self) -> None:
         records = self.make_records(7)
         result = weekly_check_in(

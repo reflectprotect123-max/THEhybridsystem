@@ -63,7 +63,8 @@ The first deterministic module set is:
 * `logging_break` — explain why the last reliable estimate is being carried
   forward;
 * `program_update` — present the proposed calorie and macro targets for
-  approval.
+  approval. After acceptance, the target is persisted for the next
+  macro-program week; declining leaves the current program unchanged.
 
 The app should keep the modules explainable and allow the user to skip or
 decline a recommendation. Recommendations are informational, not punishment or
@@ -76,4 +77,3 @@ weight-trend data, but do not publish the exact smoothing kernel, custom BMR
 equations, activity factors, confidence math, or all edge-case rules. This
 repository therefore cannot honestly claim algorithmic parity. The constants
 must remain configurable, versioned, and test-covered as product decisions.
-

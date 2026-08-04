@@ -14,54 +14,47 @@ in weekly_check_ins.status" gap.
 (awaiting the user's accept/decline via `resolve`), `"held"` is passed
 through unchanged (it already matches the schema's CHECK constraint).
 
-## Still open: no real source for `targetRateKgPerWeek`
+## Resolved: persisted source for `targetRateKgPerWeek`
 
-**Resolved (partially)** by `docs/superpowers/plans/2026-08-03-weight-coach-screens.md`:
-the Coach screen now provides a source via a `Slider` UI control
-(`CoachViewModel.onTargetRateChanged`), but it is not persisted anywhere --
-it's a per-`CoachViewModel`-instance transient value that resets to `0.0`
-every time a fresh `CoachViewModel` is created (e.g. on process death, or,
-before this fix wave's back-stack fix, on every tab switch). This is
-meaningfully different from "no source at all" but is still not a real
-stored user preference -- a future `macro_programs` slice still owns making
-this persistent. Left below for historical context.
+The Coach screen now persists the selected rate in `macro_programs` through
+`MacroProgramRepository`. It derives the database `goal` from the signed rate,
+keeps one active program per user through migration
+`002_active_macro_program.sql`, and passes that program's ID into
+`weekly_check_ins.program_id`. A changed rate pauses the old program and starts
+a new one, preserving the meaning of historical check-ins. A fresh app session
+therefore reloads the saved goal instead of silently reverting to 0.0.
 
-`CheckInRepository.recomputeCheckIn` requires the caller to supply
-`targetRateKgPerWeek` directly -- there is no `macro_programs` read path in
-this codebase yet (that table, and the whole coached/collaborative/manual
-program concept, is out of scope for every slice on this branch so far).
-`program_id` is always `null` on every persisted row for the same reason.
-Whoever builds a `macro_programs` slice or the UI layer that lets a user set
-a goal rate owns wiring a real source in; nothing here invents a default
-rate to paper over the gap.
+The user must still choose and save the rate before a check-in can run. That is
+intentional: the app does not invent a goal rate for a new user.
 
-## Still open: `recomputeCheckIn` requires at least one weigh-in
+## Resolved: same-week goal changes preserve check-in provenance
+
+Migration `005_checkin_program_provenance.sql` replaces the original
+`(user_id, week_start)` uniqueness key with
+`(user_id, program_id, week_start)`. The repository uses that same natural key
+for recompute upserts and passes `program_id` through resolve. A goal change
+during the current week can therefore create a new program's proposal without
+rewriting the prior program's check-in.
+
+## Resolved in the Coach UI: a weigh-in is required before check-in
 
 If `WeightRepository.listEntries(Instant.EPOCH)` returns no rows at all,
 `recomputeCheckIn` throws `IllegalStateException` rather than inventing a
 placeholder body weight (macro targets are computed directly from it, so a
 fabricated number would silently misrepresent the user's real macros). A
-future UI must guard against offering a check-in before the user has logged
-at least one weigh-in.
+Coach refresh now checks for an existing weigh-in and shows a direct "Log
+weight" path before offering the check-in button. The repository precondition
+remains as a defensive boundary for non-UI callers.
 
-## Still open: no scheduling/trigger for `recomputeCheckIn`
+## Still open: no automatic scheduling/trigger for `recomputeCheckIn`
 
-**Resolved** by `docs/superpowers/plans/2026-08-03-weight-coach-screens.md`:
-the Coach screen is now the first caller. Decided as: trigger = the user
-tapping the "Check in" button (not automatic/scheduled), week convention =
-most-recent-Monday through the following Sunday, device-local
-(`CoachViewModel.currentWeekStart`). This matches this file's own
-already-documented understanding, below and in "Still open: `weekStart`/
-`weekEnd` are row labels only", that `weekStart`/`weekEnd` are row labels
-only and don't bound the actual computation -- picking a convention for the
-label doesn't resolve that separate gap. Left below for historical context.
+The Coach screen is now the first caller. The current product choice is an
+explicit user tap on the "Check in" button, not an automatic or scheduled
+job; the week label is the most-recent-Monday through the following Sunday,
+using the device-local `CoachViewModel.currentWeekStart`. This resolves the
+first-caller gap, but does not make the computation automatic and does not
+resolve the separate week-bounding issue below.
 
-Like `TrendRepository.recomputeTrend`/`ExpenditureRepository.recomputeExpenditure`,
-`recomputeCheckIn` is entirely caller-driven -- nothing in this slice calls
-it, nothing decides which `weekStart`/`weekEnd` to pass. Whoever wires up
-the first caller needs to decide the week boundary convention (calendar
-week? rolling 7 days since the user's last check-in?) and when
-recomputation happens.
 
 ## Still open: no test exercises `recomputeCheckIn`/`resolve` end-to-end
 
@@ -122,14 +115,15 @@ it's PostgREST itself that then falls back to the table's primary key
 (`weekly_check_ins.id uuid primary key default gen_random_uuid()`) as the implicit
 `ON CONFLICT` target for `resolution=merge-duplicates`. Since `NewCheckIn` never
 includes `id` (server-generated), that fallback target never actually conflicts with
-anything -- a second `recomputeCheckIn` call for the same week instead hit the table's
-*separate* `unique(user_id, week_start)` constraint directly, which throws a raw
+anything -- a second `recomputeCheckIn` call for the same program and week instead hit the table's
+*separate* `unique(user_id, program_id, week_start)` constraint directly, which throws a raw
 duplicate-key database error rather than updating the existing row. `DayStatusRepository`/
 `TrendRepository`'s tables don't have this problem because their composite natural key
 (`(user_id, log_date)`/`(user_id, trend_date)`) *is* their primary key, so the same
 unset-`onConflict` pattern happens to fall back onto the right columns there.
 `weekly_check_ins`'s surrogate `id` breaks that assumption. Fixed by setting
-`onConflict = "user_id,week_start"` explicitly in the upsert call.
+`onConflict = "user_id,program_id,week_start"` explicitly in the upsert call
+and applying migration 005.
 
 ## Still open: the damped expenditure estimate is reconstructible but not versioned
 
@@ -226,6 +220,88 @@ numbers were actually produced. A future "last updated" UI affordance, or an aud
 trail, needs either a `updated_at` column or a separate history table -- neither exists
 today.
 
+## Fixed during adversarial review: migration 005's unique index ignored NULL `program_id`
+
+`weekly_check_ins_user_program_week_uidx` was created as a plain
+`create unique index ... (user_id, program_id, week_start)`. `program_id` is
+nullable, and Postgres treats NULLs as distinct in a unique index by default,
+so rows with a null `program_id` got no uniqueness protection at all and
+`ON CONFLICT (user_id, program_id, week_start)` could never match one -- a
+recompute upsert for a program-less check-in would append a new row every
+time instead of updating the existing one. Migration 005 now declares the
+index `nulls not distinct` (Postgres 15+, supported by Supabase). The
+migration file was amended in place rather than superseded by a new one
+because nothing has been applied to a live database yet; if that ever stops
+being true, this needs a follow-up migration instead of an edit.
+
+## Still open: `saveActive()` is a non-atomic two-step write that can leave a user with no goal
+
+`SupabaseMacroProgramRepository.saveActive` changes a user's goal in two
+separate HTTP round trips: first an `update` that sets the existing active
+program's `status` to `'paused'`, then an `insert` of the replacement
+program. There is no transaction around the pair. If the second call fails
+(network drop, RLS rejection, a violated constraint, the process being
+killed between the two), the user ends up with **zero** active programs --
+their previously saved goal is not merely unchanged, it is gone, because the
+old row was already paused. `getActive()` then returns `null`, and the app
+behaves as though the user never set a goal.
+
+The failure is also invisible in the UI: the caller surfaces a generic
+"couldn't save" message, which reads as "nothing happened" when in fact the
+prior state was destroyed. Migration `002_active_macro_program.sql`'s partial
+unique index (one active program per user) is what forces the pause-then-
+insert ordering in the first place, so this cannot be fixed by reordering
+the two calls.
+
+A real fix needs both steps inside one Postgres transaction -- a
+`SECURITY INVOKER` RPC (so RLS still applies) that pauses the current active
+program and inserts the replacement, returning the new row, called as a
+single `rpc(...)` from the repository. Not attempted in this pass: it adds a
+new migration and a new server-side function, and the correct error
+semantics for the "no active program existed" case need deciding first.
+
+Until then, a caller that sees `saveActive` fail should re-read `getActive()`
+before telling the user anything, and must be prepared for it to return
+`null`.
+
+## Still open: migrations 002 and 003 ship no duplicate-reconciliation query
+
+Both `002_active_macro_program.sql` and `003_expenditure_daily_upsert.sql`
+create a unique index over data that may already contain duplicates, and
+both deliberately refuse to guess a winner -- 002's comment says duplicate
+active rows "must be reconciled before applying this migration" and 003's
+says the same for duplicate `(user_id, window_end)` rows. That refusal is
+correct (silently deleting a user's goals would violate CLAUDE.md rule #3),
+but the consequence is that applying either migration to a database with
+existing data **hard-fails** with a raw `could not create unique index`
+error, and neither file gives the operator anything to run first.
+
+Whoever applies these to a database with real data needs to check for and
+manually resolve duplicates beforehand, e.g.:
+
+```sql
+-- Migration 002: users with more than one active macro program.
+select user_id, count(*)
+  from public.macro_programs
+ where status = 'active'
+ group by user_id
+having count(*) > 1;
+
+-- Migration 003: duplicate derived estimates for one user and window end.
+select user_id, window_end, count(*)
+  from public.expenditure_estimates
+ group by user_id, window_end
+having count(*) > 1;
+```
+
+Resolving them is a judgement call, not a mechanical one, which is why it is
+not scripted here: for 002, exactly one program per user should stay
+`'active'` and the rest should become `'paused'` (they are user-entered
+goals -- do not delete them). For 003 the rows are derived state and the
+newest `created_at` per group is the defensible keeper, but that is still an
+explicit operator decision. This gap stays open until either a documented
+runbook or an idempotent pre-flight migration exists.
+
 ## Still open: `previous_expenditure_kcal` is a damping anchor, not "last week's expenditure"
 
 `previousExpenditureKcal` is exactly `ExpenditureRepository.loadRecords()`'s second
@@ -235,3 +311,95 @@ check-in, `null`. A UI rendering this column as "your previous week's expenditur
 would be describing it wrong on both counts -- it's not week-scoped (see the
 `weekStart`/`weekEnd` gap above) and it's genuinely absent on a first check-in, which
 a naive UI might render as `0` instead of "not yet available."
+
+## Fixed during adversarial review: the Coach refresh throttle could strand a first-time weigh-in
+
+`CoachViewModel.refresh()` gained a 60-second throttle (`lastRefreshedAt`) to
+stop `ON_RESUME` from re-triggering the writing `recomputeExpenditure()` on
+every rotation or tab re-entry. Once `hasWeighIn` also started being derived
+inside `refresh()` (from `WeightRepository.listEntries`), that throttle
+reintroduced the weigh-in dead end this file records above, by a new route: a
+user with no weigh-ins loads Coach (a *successful* refresh that stamps
+`lastRefreshedAt`), taps "Log weight", logs their first ever weigh-in, comes
+back, and the resume-triggered `refresh()` is skipped by the throttle — so
+`hasWeighIn` stays `false` and the check-in section stays hidden for up to a
+minute, with no on-screen control that could recompute it. The pre-existing
+`lastRefreshedAt = null` in `checkIn()`'s `IllegalStateException` handler did
+not cover this, because that path only runs if the user managed to press
+"Check in", which this state never offers.
+
+Fixed by treating `hasWeighIn == false` as "nothing usable loaded yet" for
+throttle purposes, alongside the existing `isLoading` first-load bypass, so a
+refresh in that state always proceeds. `refresh` also took the explicit
+`force: Boolean = false` escape hatch already used by
+`WeightViewModel.refresh`, for post-write callers; no Coach caller passes
+`force = true` today, and `CoachScreen`'s `ON_RESUME` observer deliberately
+still calls the throttled `refresh()`.
+
+The cost is deliberate: a user who has genuinely never weighed in pays a full
+refresh (including the `recomputeExpenditure` write) on every resume until
+they log one. That is bounded by the user logging a weigh-in, which is exactly
+what that screen state is asking them to do.
+
+## Fixed during adversarial review: an error message on Coach was unrecoverable for up to a minute
+
+`CoachScreen` renders `errorMessage` as an **exclusive** branch of its
+top-level `when`: while it is non-null the screen is a single line of red text
+with no slider, no buttons, and no retry affordance. The only thing that
+clears it is a subsequent successful `refresh()` — which the 60-second
+throttle could skip. `saveGoal()`'s catch and `refresh()`'s own
+`targetSyncError` path both set `errorMessage` without clearing
+`lastRefreshedAt`, so a failure there froze the whole screen until the timer
+expired. `markResolvedTargetSyncFailure` already cleared the throttle
+correctly; the other sites had simply missed it.
+
+The rule is now uniform in `CoachViewModel`: **every** state update that sets a
+non-null `errorMessage` also sets `lastRefreshedAt = null`, so the next
+resume-triggered refresh genuinely retries. This includes `refresh()`'s
+`targetSyncError` and outer catch, `saveGoal()`'s catch, `checkIn()`'s
+precondition returns and generic catch, and `resolve()`'s precondition
+returns, post-resolve sync-failure message, and per-exception handlers.
+
+### Still open: the exclusive error branch is the underlying UX problem
+
+Clearing the throttle makes the screen recoverable, but the recovery still
+depends on the user backgrounding and re-opening Coach. A message like "your
+check-in is accepted, but next week's target is still syncing" is informational
+and should not be hiding the goal slider, the saved-goal state, and the
+check-in status underneath it. The durable fix is to render `errorMessage` as a
+banner *above* the normal content rather than instead of it, plus an explicit
+"Retry" button that calls `refresh(force = true)` — which is what the `force`
+parameter added above exists for. Not done in this pass: it is a screen-layout
+change, and which messages are fatal versus advisory needs deciding on purpose
+rather than inferred from the current call sites.
+
+## Fixed during adversarial review: goal-rate slider stored float noise
+
+`CoachScreen`'s goal-rate `Slider` is a `Float` widget (`-1f..1f`,
+`steps = 19`, i.e. a 0.1 grid) whose value was widened straight to `Double`, so
+selecting the "-0.9" tick persisted `-0.8999999761581421` into
+`macro_programs.target_rate_kg_per_week`. The label rounds to one decimal, so
+the stored goal silently disagreed with the number the user saw, and
+`hasUnsavedGoal` could latch on a difference that was pure float noise.
+`CoachViewModel.onTargetRateChanged` now snaps the incoming rate to the
+slider's own 0.1 grid (`Math.round(rate * 10) / 10.0`) before coercing it into
+range. Existing rows written before this fix keep their un-snapped values; no
+back-fill is attempted, since nothing here can distinguish float noise from a
+rate deliberately set through some other future path.
+
+## Fixed during adversarial review: the post-resolve sync-failure message assumed "accepted"
+
+`markAcceptedTargetSyncFailure` hardcoded "Check-in accepted, but next week's
+target could not be synced yet", but it is invoked from every `resolve()`
+exception handler — including on the `accepted = false` (decline) path, where
+no next-week target is written at all. Telling a user who just declined a
+proposal that it was accepted misstates a decision the database has already
+committed. It now takes the `accepted` flag (available at all four call sites
+as `resolve`'s own parameter) and is named `markResolvedTargetSyncFailure`; the
+decline path gets a message that does not claim a target was applied.
+
+The decline path reaching that handler is defensive rather than observed:
+after a successful `resolve(accepted = false)` the remaining work is a local
+state read that cannot realistically throw. The message is still worth getting
+right, because the handler catches a generic `Exception` and nothing guarantees
+that stays true.

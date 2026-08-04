@@ -2,6 +2,8 @@ package com.macrotrack.app.data.model
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.buildJsonObject
 
 /** Values `food_log_entries.entry_kind`'s DB check constraint allows — copied verbatim, not re-derived. */
 object EntryKind {
@@ -44,6 +46,16 @@ data class FoodLogEntry(
     @SerialName("fat_g") val fatG: Double,
     @SerialName("display_name") val displayName: String,
     val notes: String? = null,
+    /**
+     * Nutrients copied from the source record at log time, at the source's own
+     * nutrition-basis denominator (its `nutrition_basis_qty`/`nutrition_basis_unit`)
+     * — NOT scaled to the logged quantity, unlike the calories/protein_g/carbs_g/fat_g
+     * fields on this same row, which ARE scaled. Do not sum or average these across
+     * entries without accounting for that.
+     */
+    val nutrients: JsonObject = buildJsonObject { },
+    /** Source identity and logged scaling metadata, copied at log time. */
+    @SerialName("source_snapshot") val sourceSnapshot: JsonObject = buildJsonObject { },
 )
 
 /** Insert payload. `user_id` is filled in by the repository from the session, never trusted from the caller. */
@@ -64,6 +76,15 @@ data class NewFoodLogEntry(
     @SerialName("fat_g") val fatG: Double,
     @SerialName("display_name") val displayName: String,
     val notes: String? = null,
+    /**
+     * Nutrients copied from the source record at log time, at the source's own
+     * nutrition-basis denominator (its `nutrition_basis_qty`/`nutrition_basis_unit`)
+     * — NOT scaled to the logged quantity, unlike the calories/protein_g/carbs_g/fat_g
+     * fields on this same row, which ARE scaled. Do not sum or average these across
+     * entries without accounting for that.
+     */
+    val nutrients: JsonObject = buildJsonObject { },
+    @SerialName("source_snapshot") val sourceSnapshot: JsonObject = buildJsonObject { },
 )
 
 /**

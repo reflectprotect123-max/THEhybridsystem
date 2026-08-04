@@ -63,16 +63,10 @@ instead — and that's a product decision (skip the insert entirely while
 holding? persist a sentinel? widen the column?), not something to invent
 ad hoc in repository code the first time it happens to compile.
 
-## `program_update` module is documented but never emitted
+## Resolved: `program_update` module is documented but never emitted
 
-`docs/ADAPTIVE_ENGINE_CONTRACT.md`'s check-in module list names four
-modules: `partial_logging`, `weigh_in`, `logging_break`, `program_update`
-("present the proposed calorie and macro targets for approval"). Neither
-`adaptive_engine.py` nor its Kotlin port ever emits `program_update` — the
-"ready" path returns `modules = []` and puts the proposed targets directly
-on the result instead. The doc and the executable reference already
-disagreed before this port; the port just makes that visible in Kotlin too
-rather than resolving it. Either the contract doc needs updating to drop
-`program_update` (if targets-on-the-result is the intended design), or the
-engine needs a fourth module emitted on the ready path — whichever the
-product decision is, it isn't encoded anywhere yet.
+The ready path now emits `program_update` in both `adaptive_engine.py` and
+the Kotlin port, with the proposed target still carried on `targets` for the
+approval UI. The Python and Kotlin regression suites assert the same module
+key and action, so the contract no longer depends on an undocumented UI-only
+interpretation.

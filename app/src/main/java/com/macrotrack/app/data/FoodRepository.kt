@@ -18,16 +18,19 @@ interface FoodRepository {
 class SupabaseFoodRepository(private val client: SupabaseClient) : FoodRepository {
 
     override suspend fun findByBarcode(barcode: String): Food? {
-        if (barcode.isBlank()) return null
+        val exactBarcode = barcode.trim()
+        if (exactBarcode.isBlank()) return null
         return client.postgrest.from("foods").select {
-            filter { eq("barcode", barcode) }
+            filter { eq("barcode", exactBarcode) }
             limit(1)
         }.decodeSingleOrNull<Food>()
     }
 
     override suspend fun search(query: String, limit: Int): List<Food> {
-        if (query.isBlank()) return emptyList()
-        val pattern = SearchPatterns.ilikePattern(query)
+        val cleanQuery = query.trim()
+        if (cleanQuery.isBlank()) return emptyList()
+        require(limit > 0) { "limit must be greater than 0" }
+        val pattern = SearchPatterns.ilikePattern(cleanQuery)
         return client.postgrest.from("foods").select {
             filter {
                 or {
@@ -36,7 +39,7 @@ class SupabaseFoodRepository(private val client: SupabaseClient) : FoodRepositor
                 }
             }
             order("name", Order.ASCENDING)
-            limit(limit.toLong())
+            limit(limit.coerceAtMost(100).toLong())
         }.decodeList<Food>()
     }
 

@@ -1,10 +1,11 @@
 # MacroTrack
 
-New repository for an Android nutrition tracker with a Kotlin/Jetpack Compose
-client and Supabase/Postgres backend. The first vertical slice is the data and
-adaptation foundation: Australian food imports, provenance-aware food records,
-logging/recipe tables, weight trends, expenditure estimates, macro programs,
-and weekly check-ins.
+Native Android application for nutrition tracking, built with Kotlin and
+Jetpack Compose against a Supabase/Postgres backend. There is no React Native,
+Flutter, WebView, or JavaScript runtime in the Android client. The current
+vertical slice includes Australian food imports, provenance-aware food
+records, logging/recipe tables, weight trends, expenditure estimates, macro
+programs, weekly check-ins, and a CameraX/ML Kit barcode scanner.
 
 This is not a finished MacroFactor clone. The public product behaviour is
 replicated as a deterministic contract where it is visible; private constants
@@ -14,7 +15,7 @@ and exact implementation details are not guessed.
 
 ```text
 supabase/migrations/001_macro_foundation.sql  Supabase schema and RLS
-app/                                         Android/Kotlin/Compose starter
+app/                                         Native Android/Kotlin/Compose module
 import_openfoodfacts.py                       OFF API/dump importer
 import_ausnut.py                              AUSNUT/NUTTAB importer
 seed_common.py                                Shared SQL/parsing helpers
@@ -38,7 +39,7 @@ source .venv/bin/activate
 python -m pip install requests
 ```
 
-The Android module reads `SUPABASE_URL` and
+The native Android module reads `SUPABASE_URL` and
 `SUPABASE_PUBLISHABLE_KEY` from a local `local.properties` file. That file is
 ignored by Git and must never contain a service-role key.
 
@@ -47,15 +48,22 @@ SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_PUBLISHABLE_KEY=your-publishable-key
 ```
 
-Open the repository in Android Studio and sync the Gradle project. The current
-starter uses the Compose compiler plugin, Kotlin 2.3.21, Compose BOM 2026.06.00,
-AGP 9.3.0, and Gradle 9.5. The included workspace does not have an Android SDK
-or Gradle installation, so Android compilation must be verified on the Android
-development machine.
+Open the repository in Android Studio and sync the Gradle project. The native
+module uses the Compose compiler plugin, Kotlin 2.3.21, Compose BOM 2026.06.00,
+AGP 9.3.0, Gradle 9.5.1, compile/target SDK 37, lifecycle-runtime-compose
+2.10.0, CameraX 1.6.1, bundled ML Kit barcode scanning 17.3.0, and Supabase
+Kotlin BOM 3.7.0. These coordinates were checked against their published
+repositories on 2026-08-04; the first real Android sync/build still needs to
+run on a machine with the Android SDK and Java dependency access.
 
 ## Database setup
 
-Apply the migration through the Supabase CLI or your normal migration runner:
+Apply all migrations through the Supabase CLI or your normal migration runner
+(`002_active_macro_program.sql` adds the one-active-goal invariant,
+`003_expenditure_daily_upsert.sql` makes same-day derived estimates atomic,
+`004_owner_reference_policies.sql` prevents cross-user custom-food and recipe
+references, and `005_checkin_program_provenance.sql` keeps same-week
+check-ins separate when a goal changes):
 
 ```bash
 supabase db push
@@ -165,13 +173,28 @@ python -m unittest discover -s tests -v
 python3 -m py_compile *.py
 ```
 
+Native Android verification:
+
+```bash
+./scripts/verify_native_source.sh
+./gradlew :app:compileDebugKotlin
+./gradlew :app:testDebugUnitTest
+./gradlew :app:assembleDebug
+```
+
 ## Honest feature boundary
 
-This repository now contains the backend/data and deterministic decision
-foundation. The following are intentionally still client/product work rather
-than pretending they are already complete: Compose screens, camera barcode
-integration, nutrition-label OCR, URL recipe extraction, photo/voice AI
-logging, offline sync conflict resolution, notifications, and billing.
+This repository now contains the backend/data foundation, deterministic
+decision logic, native Compose screens, historical-date logging, explicit daily
+status controls, owner-scoped log deletion, custom-food and quick-add logging,
+recipe creation, favorites, a persisted active macro goal, accepted check-in
+targets for the next program week, and an initial native camera barcode scanner. The
+following remain intentionally incomplete client/product work:
+nutrition-label OCR, URL recipe extraction, photo/voice AI logging, offline
+sync conflict resolution, notifications, billing, full macro-program history
+editing, and body-metrics/progress-photo screens. The scanner still needs a
+real Android build and physical-device verification; see
+`docs/BARCODE_SCANNER_GAPS.md`.
 
 The public MacroFactor documentation describes deterministic intake/weight
 adaptation, weekly check-ins, barcode/search/recipe logging, micronutrients,

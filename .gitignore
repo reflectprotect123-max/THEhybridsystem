@@ -1,4 +1,5 @@
 .gradle/
+.gradle-cache/
 build/
 */build/
 local.properties

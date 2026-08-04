@@ -34,7 +34,9 @@ object MacroResolution {
         }
 
     fun perServing(total: ScaledMacros, recipeServings: Double): ScaledMacros {
-        require(recipeServings > 0) { "recipeServings must be > 0, got $recipeServings" }
+        require(recipeServings.isFinite() && recipeServings > 0) {
+            "recipeServings must be finite and > 0, got $recipeServings"
+        }
         return ScaledMacros(
             calories = total.calories / recipeServings,
             proteinG = total.proteinG / recipeServings,
@@ -44,7 +46,9 @@ object MacroResolution {
     }
 
     fun forLoggedServings(perServingMacros: ScaledMacros, loggedServings: Double): ScaledMacros {
-        require(loggedServings > 0) { "loggedServings must be > 0, got $loggedServings" }
+        require(loggedServings.isFinite() && loggedServings > 0) {
+            "loggedServings must be finite and > 0, got $loggedServings"
+        }
         return ScaledMacros(
             calories = perServingMacros.calories * loggedServings,
             proteinG = perServingMacros.proteinG * loggedServings,

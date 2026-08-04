@@ -1,6 +1,10 @@
 package com.macrotrack.app.domain
 
-/** One suggested action surfaced to the user during a held check-in. */
+/**
+ * One suggested action surfaced to the user by a check-in, on either path: the "held" path emits
+ * the data-coverage modules (partial_logging / weigh_in / logging_break), and the "ready" path
+ * emits the program_update module that invites the user to review the proposed targets.
+ */
 data class CheckInModule(val key: String, val action: String)
 
 /** Mirrors adaptive_engine.py's weekly_check_in() return dict. */
@@ -45,8 +49,11 @@ fun weeklyCheckIn(
     }
     val calories = calorieTarget(estimateKcal, targetRateKgPerWeek, config)
     val targets = macroTargets(calories, bodyWeightKg, proteinGPerKg, fatGPerKg)
+    val modules = listOf(
+        CheckInModule("program_update", "review and accept the proposed calorie and macro targets"),
+    )
     return CheckInResult(
-        status = "ready", estimate = estimate, modules = emptyList(), targets = targets,
+        status = "ready", estimate = estimate, modules = modules, targets = targets,
         explanation = "The next target uses observed expenditure and the signed goal rate; " +
             "it does not punish or average in unlogged days.",
     )

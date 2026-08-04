@@ -37,9 +37,8 @@ data class PersistedCheckIn(
  * Upsert payload for a recomputed check-in. `user_id` is filled in by the
  * repository from the current session, never trusted from the caller.
  * `id`/`created_at` are server-generated and omitted (never applicable to
- * an update); `program_id` is always null in this slice (`macro_programs`
- * is out of scope) and likewise omitted, since it's never written by this
- * slice either way.
+ * an update); `program_id` is included explicitly so the check-in remains
+ * linked to the active goal that produced it.
  *
  * Every other nullable column here is a REQUIRED constructor parameter --
  * deliberately not defaulted to `null`. This table is written via `upsert`,
@@ -57,6 +56,7 @@ data class PersistedCheckIn(
 @Serializable
 data class NewCheckIn(
     @SerialName("user_id") val userId: String,
+    @SerialName("program_id") val programId: String?,
     @SerialName("week_start") val weekStart: String,
     @SerialName("week_end") val weekEnd: String,
     val status: String,

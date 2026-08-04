@@ -89,6 +89,13 @@ class ExpenditureEstimateModelsTest {
             windowStart = "2026-07-01",
             windowEnd = "2026-08-03",
             estimateKcal = 2450.0,
+            // Required (non-defaulted) parameters: on an upsert they must be
+            // transmitted as explicit nulls so a prior row's values are
+            // cleared rather than silently retained. See the KDoc on
+            // NewExpenditureEstimate.
+            previousEstimateKcal = null,
+            rawEstimateKcal = null,
+            trendSlopeKgPerWeek = null,
             nutritionDays = 12,
             weightDays = 5,
             confidence = "medium",
@@ -108,6 +115,13 @@ class ExpenditureEstimateModelsTest {
         // inputs has no default value on NewExpenditureEstimate, so it always
         // encodes too, regardless of encodeDefaults.
         assertEquals(true, encoded.contains("Expenditure updated from logged intake"))
+        // The three nullable numeric fields have no default either, so an
+        // explicit null still encodes as an explicit JSON null. This is what
+        // lets an upsert clear a previously-persisted value; if any of them
+        // regained a `= null` default they would vanish from the body here.
+        assertEquals(true, encoded.contains("\"previous_estimate_kcal\":null"))
+        assertEquals(true, encoded.contains("\"raw_estimate_kcal\":null"))
+        assertEquals(true, encoded.contains("\"trend_slope_kg_per_week\":null"))
         assertEquals(false, encoded.contains("\"id\""))
         assertEquals(false, encoded.contains("\"created_at\""))
         assertEquals(false, encoded.contains("\"method\""))

@@ -82,9 +82,10 @@ class CheckInModelsTest {
     }
 
     @Test
-    fun encodesANewCheckInPayloadOmittingIdAndCreatedAtAndProgramId() {
+    fun encodesANewCheckInPayloadOmittingIdAndCreatedAtButIncludingProgramId() {
         val payload = NewCheckIn(
             userId = "user-1",
+            programId = "program-1",
             weekStart = "2026-07-27",
             weekEnd = "2026-08-02",
             status = "pending",
@@ -112,9 +113,7 @@ class CheckInModelsTest {
         assertEquals(true, encoded.contains("\"weigh_in\""))
         assertEquals(false, encoded.contains("\"id\""))
         assertEquals(false, encoded.contains("\"created_at\""))
-        // program_id has no property on NewCheckIn at all (always null in
-        // this slice), so it can never appear regardless of encodeDefaults.
-        assertEquals(false, encoded.contains("\"program_id\""))
+        assertEquals(true, encoded.contains("\"program_id\":\"program-1\""))
     }
 
     @Test
@@ -126,6 +125,7 @@ class CheckInModelsTest {
         // JSON null, so an upsert can clear a stale prior value on this row.
         val payload = NewCheckIn(
             userId = "user-1",
+            programId = null,
             weekStart = "2026-07-20",
             weekEnd = "2026-07-26",
             status = "held",
@@ -148,6 +148,7 @@ class CheckInModelsTest {
         assertEquals(true, encoded.contains("\"observed_expenditure_kcal\":null"))
         assertEquals(true, encoded.contains("\"proposed_calories\":null"))
         assertEquals(true, encoded.contains("\"resolved_at\":null"))
+        assertEquals(true, encoded.contains("\"program_id\":null"))
     }
 
     @Test

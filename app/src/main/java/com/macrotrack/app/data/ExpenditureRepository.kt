@@ -53,9 +53,12 @@ class SupabaseExpenditureRepository(
     }
 
     override suspend fun loadRecords(): Pair<List<DailyRecord>, Double?> {
+        return loadRecordsAt(LocalDate.now(ZoneId.systemDefault()))
+    }
+
+    private suspend fun loadRecordsAt(today: LocalDate): Pair<List<DailyRecord>, Double?> {
         val zoneId = ZoneId.systemDefault()
         val earliestBound = LocalDate.of(1970, 1, 1)
-        val today = LocalDate.now(zoneId)
 
         val previous = getLatestEstimate()
         // "previous is from today" is only decidable this cheaply because
@@ -126,9 +129,10 @@ class SupabaseExpenditureRepository(
         val userId = requireUserId()
         val today = LocalDate.now(ZoneId.systemDefault())
 
-        val previous = getLatestEstimate()
-        val isPreviousFromToday = previous != null && previous.windowEnd == today.toString()
-        val (records, dampingAnchor) = loadRecords()
+        // Keep the date used for assembly, damping, and persistence identical.
+        // This avoids a midnight boundary changing which row is treated as the
+        // current estimate during one recompute.
+        val (records, dampingAnchor) = loadRecordsAt(today)
 
         val estimate = AdaptiveEngine.estimateExpenditure(records, dampingAnchor, EngineConfig())
 
@@ -136,18 +140,6 @@ class SupabaseExpenditureRepository(
         val windowStart = estimate.windowStart
         val windowEnd = estimate.windowEnd
         if (estimateKcal != null && windowStart != null && windowEnd != null) {
-            if (isPreviousFromToday) {
-                // Replace today's row rather than accumulate a second one --
-                // it represents "today's estimate", re-evaluated, not a new
-                // historical entry. previous is non-null whenever
-                // isPreviousFromToday is true.
-                client.postgrest.from("expenditure_estimates").delete {
-                    filter {
-                        eq("user_id", userId)
-                        eq("id", previous.id)
-                    }
-                }
-            }
             val payload = NewExpenditureEstimate(
                 userId = userId,
                 windowStart = windowStart,
@@ -162,7 +154,23 @@ class SupabaseExpenditureRepository(
                 state = estimate.state,
                 inputs = buildJsonObject { put("explanation", estimate.explanation) },
             )
-            client.postgrest.from("expenditure_estimates").insert(payload)
+            // Migration 003 makes (user_id, window_end) unique. This is one
+            // derived estimate per user/day; upsert makes refreshes atomic and
+            // safely handles two refresh callers racing each other.
+            client.postgrest.from("expenditure_estimates").upsert(payload) {
+                onConflict = "user_id,window_end"
+            }
+        } else {
+            // If today's history no longer supports a concrete estimate (for
+            // example, the user deleted the last logged record), remove only
+            // today's derived row so getLatestEstimate() cannot return stale
+            // numbers that disagree with the fresh holding result.
+            client.postgrest.from("expenditure_estimates").delete {
+                filter {
+                    eq("user_id", userId)
+                    eq("window_end", today.toString())
+                }
+            }
         }
 
         return estimate

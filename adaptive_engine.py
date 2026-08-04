@@ -293,6 +293,7 @@ def weekly_check_in(
     assert estimate.estimate_kcal is not None
     calories = calorie_target(estimate.estimate_kcal, target_rate_kg_per_week, config)
     targets = macro_targets(calories, body_weight_kg, protein_g_per_kg, fat_g_per_kg)
+    modules.append({"key": "program_update", "action": "review and accept the proposed calorie and macro targets"})
     return {
         "status": "ready",
         "estimate": asdict(estimate),

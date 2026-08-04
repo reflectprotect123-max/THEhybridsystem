@@ -9,6 +9,7 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -25,6 +26,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.macrotrack.app.data.AppContainer
+import com.macrotrack.app.data.model.EntryKind
 import com.macrotrack.app.ui.auth.AuthScreen
 import com.macrotrack.app.ui.auth.AuthViewModel
 import com.macrotrack.app.ui.coach.CoachScreen
@@ -33,11 +35,19 @@ import com.macrotrack.app.ui.dailylog.DailyLogScreen
 import com.macrotrack.app.ui.dailylog.DailyLogViewModel
 import com.macrotrack.app.ui.search.AddLogEntryScreen
 import com.macrotrack.app.ui.search.AddLogEntryViewModel
+import com.macrotrack.app.ui.search.BarcodeScannerScreen
 import com.macrotrack.app.ui.search.FoodSearchScreen
 import com.macrotrack.app.ui.search.FoodSearchViewModel
+import com.macrotrack.app.ui.search.CreateCustomFoodScreen
+import com.macrotrack.app.ui.search.CreateCustomFoodViewModel
+import com.macrotrack.app.ui.search.QuickAddScreen
+import com.macrotrack.app.ui.search.QuickAddViewModel
+import com.macrotrack.app.ui.search.RecipeBuilderScreen
+import com.macrotrack.app.ui.search.RecipeBuilderViewModel
 import com.macrotrack.app.ui.weight.WeightScreen
 import com.macrotrack.app.ui.weight.WeightViewModel
 import io.github.jan.supabase.auth.status.SessionStatus
+import java.time.LocalDate
 
 private data class BottomNavItem(val route: String, val label: String)
 
@@ -119,10 +129,9 @@ fun MacroTrackNavHost(appContainer: AppContainer) {
                                             }
                                         }
                                     },
-                                    // Plain Text, not an Icons.Filled.* ImageVector -- avoids
-                                    // depending on material-icons-core/extended a second time
-                                    // beyond the one already-flagged, unverified Icons.Filled.Add
-                                    // usage on Daily Log's FAB (see the prior plan's Task 5 note).
+                                    // Text initials keep the bottom navigation dependency-light
+                                    // and make the destinations readable even without an icon
+                                    // pack or generated vector assets.
                                     icon = { Text(item.label.take(1)) },
                                     label = { Text(item.label) },
                                 )
@@ -150,7 +159,7 @@ fun MacroTrackNavHost(appContainer: AppContainer) {
                         )
                         DailyLogScreen(
                             viewModel = dailyLogViewModel,
-                            onAddFood = { navController.navigate(Destinations.FOOD_SEARCH) },
+                            onAddFood = { date -> navController.navigate(Destinations.foodSearchRoute(date)) },
                         )
                     }
                     composable(Destinations.WEIGHT) {
@@ -173,6 +182,8 @@ fun MacroTrackNavHost(appContainer: AppContainer) {
                                     CoachViewModel(
                                         expenditureRepository = appContainer.expenditureRepository,
                                         checkInRepository = appContainer.checkInRepository,
+                                        macroProgramRepository = appContainer.macroProgramRepository,
+                                        weightRepository = appContainer.weightRepository,
                                     )
                                 }
                             },
@@ -184,7 +195,13 @@ fun MacroTrackNavHost(appContainer: AppContainer) {
                             },
                         )
                     }
-                    composable(Destinations.FOOD_SEARCH) {
+                    composable(
+                        route = Destinations.FOOD_SEARCH_PATTERN,
+                        arguments = listOf(navArgument("logDate") { type = NavType.StringType }),
+                    ) { foodSearchBackStackEntry ->
+                        val logDate = LocalDate.parse(
+                            foodSearchBackStackEntry.arguments?.getString("logDate").orEmpty(),
+                        )
                         val foodSearchViewModel: FoodSearchViewModel = viewModel(
                             factory = viewModelFactory {
                                 initializer {
@@ -198,11 +215,116 @@ fun MacroTrackNavHost(appContainer: AppContainer) {
                                 }
                             },
                         )
+                        val scannedBarcode by foodSearchBackStackEntry.savedStateHandle
+                            .getStateFlow<String?>(Destinations.SCANNED_BARCODE_KEY, null)
+                            .collectAsState()
+
+                        LaunchedEffect(scannedBarcode) {
+                            val barcode = scannedBarcode
+                            if (!barcode.isNullOrBlank()) {
+                                foodSearchViewModel.onBarcodeDetected(barcode)
+                                foodSearchBackStackEntry.savedStateHandle[Destinations.SCANNED_BARCODE_KEY] = null
+                            }
+                        }
+
                         FoodSearchScreen(
                             viewModel = foodSearchViewModel,
+                            onScanBarcode = { navController.navigate(Destinations.BARCODE_SCANNER) },
+                            onCreateCustomFood = { navController.navigate(Destinations.createCustomFoodRoute(logDate)) },
+                            onQuickAdd = { navController.navigate(Destinations.quickAddRoute(logDate)) },
+                            onCreateRecipe = { navController.navigate(Destinations.recipeBuilderRoute(logDate)) },
                             onResultSelected = { entryKind, id ->
-                                navController.navigate(Destinations.addLogEntryRoute(entryKind, id))
+                                navController.navigate(Destinations.addLogEntryRoute(entryKind, id, logDate))
                             },
+                            logDate = logDate,
+                        )
+                    }
+                    composable(
+                        route = Destinations.QUICK_ADD_PATTERN,
+                        arguments = listOf(navArgument("logDate") { type = NavType.StringType }),
+                    ) { quickAddBackStackEntry ->
+                        val logDate = LocalDate.parse(
+                            quickAddBackStackEntry.arguments?.getString("logDate").orEmpty(),
+                        )
+                        val quickAddViewModel: QuickAddViewModel = viewModel(
+                            factory = viewModelFactory {
+                                initializer {
+                                    QuickAddViewModel(
+                                        logRepository = appContainer.logRepository,
+                                        logDate = logDate,
+                                    )
+                                }
+                            },
+                        )
+                        QuickAddScreen(
+                            viewModel = quickAddViewModel,
+                            logDate = logDate,
+                            onSaved = { navController.popBackStack(Destinations.DAILY_LOG, inclusive = false) },
+                            onCancel = { navController.popBackStack() },
+                        )
+                    }
+                    composable(
+                        route = Destinations.CREATE_CUSTOM_FOOD_PATTERN,
+                        arguments = listOf(navArgument("logDate") { type = NavType.StringType }),
+                    ) { createFoodBackStackEntry ->
+                        val logDate = LocalDate.parse(
+                            createFoodBackStackEntry.arguments?.getString("logDate").orEmpty(),
+                        )
+                        val createViewModel: CreateCustomFoodViewModel = viewModel(
+                            factory = viewModelFactory {
+                                initializer {
+                                    CreateCustomFoodViewModel(
+                                        repository = appContainer.customFoodRepository,
+                                    )
+                                }
+                            },
+                        )
+                        CreateCustomFoodScreen(
+                            viewModel = createViewModel,
+                            onSaved = { id ->
+                                navController.navigate(
+                                    Destinations.addLogEntryRoute(EntryKind.CUSTOM_FOOD, id, logDate),
+                                ) {
+                                    popUpTo(Destinations.createCustomFoodRoute(logDate)) { inclusive = true }
+                                }
+                            },
+                            onCancel = { navController.popBackStack() },
+                        )
+                    }
+                    composable(
+                        route = Destinations.RECIPE_BUILDER_PATTERN,
+                        arguments = listOf(navArgument("logDate") { type = NavType.StringType }),
+                    ) { recipeBuilderBackStackEntry ->
+                        val logDate = LocalDate.parse(
+                            recipeBuilderBackStackEntry.arguments?.getString("logDate").orEmpty(),
+                        )
+                        val recipeBuilderViewModel: RecipeBuilderViewModel = viewModel(
+                            factory = viewModelFactory {
+                                initializer {
+                                    RecipeBuilderViewModel(
+                                        recipeRepository = appContainer.recipeRepository,
+                                        foodRepository = appContainer.foodRepository,
+                                        customFoodRepository = appContainer.customFoodRepository,
+                                    )
+                                }
+                            },
+                        )
+                        RecipeBuilderScreen(
+                            viewModel = recipeBuilderViewModel,
+                            logDate = logDate,
+                            onSaved = { navController.popBackStack(Destinations.foodSearchRoute(logDate), inclusive = false) },
+                            onCancel = { navController.popBackStack() },
+                        )
+                    }
+                    composable(Destinations.BARCODE_SCANNER) {
+                        BarcodeScannerScreen(
+                            onBarcodeDetected = { barcode ->
+                                navController.previousBackStackEntry
+                                    ?.savedStateHandle
+                                    ?.set(Destinations.SCANNED_BARCODE_KEY, barcode)
+                                navController.popBackStack()
+                            },
+                            onClose = { navController.popBackStack() },
                         )
                     }
                     composable(
@@ -210,16 +332,21 @@ fun MacroTrackNavHost(appContainer: AppContainer) {
                         arguments = listOf(
                             navArgument("entryKind") { type = NavType.StringType },
                             navArgument("id") { type = NavType.StringType },
+                            navArgument("logDate") { type = NavType.StringType },
                         ),
                     ) { backStackEntryArgs ->
                         val entryKind = backStackEntryArgs.arguments?.getString("entryKind").orEmpty()
                         val id = backStackEntryArgs.arguments?.getString("id").orEmpty()
+                        val logDate = LocalDate.parse(
+                            backStackEntryArgs.arguments?.getString("logDate").orEmpty(),
+                        )
                         val addLogEntryViewModel: AddLogEntryViewModel = viewModel(
                             factory = viewModelFactory {
                                 initializer {
                                     AddLogEntryViewModel(
                                         entryKind = entryKind,
                                         id = id,
+                                        logDate = logDate,
                                         foodRepository = appContainer.foodRepository,
                                         customFoodRepository = appContainer.customFoodRepository,
                                         recipeRepository = appContainer.recipeRepository,

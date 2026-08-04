@@ -91,5 +91,9 @@ class WeeklyCheckInTest {
         assertEquals(322.1, targets.carbsG, 0.0001)
         assertEquals(71.2, targets.fatG, 0.0001)
         assertEquals(2570.0, targets.macroCalories, 0.0001)
+        assertEquals(
+            listOf(CheckInModule("program_update", "review and accept the proposed calorie and macro targets")),
+            result.modules,
+        )
     }
 }

@@ -14,3 +14,7 @@ Paste this as the opening instruction after opening the repository:
 > missing nutrition data as zero. After each slice, add tests and report what
 > actually passed.
 
+Native Android requirement: keep the client as a standard Kotlin/Jetpack
+Compose Android app. Do not replace it with React Native, Expo, Flutter,
+WebView, or a JavaScript bridge. The APK must be produced by the included
+Gradle Android module (`:app`).

@@ -139,14 +139,10 @@ recompute itself internally scans full history regardless of that window,
 per `recomputeTrend`'s own existing behavior described below. A 60-second
 throttle (see WeightViewModel.kt) skips the actual recompute if the last
 successful refresh was recent, to avoid redundant writes on rapid tab-switching
-or rotation. Left below for historical context.
-
-`recomputeTrend` is entirely caller-driven — nothing in this slice schedules
-it. Today, nothing calls it at all (no UI/ViewModel exists yet). Whoever
-wires up the first caller needs to decide when recomputation happens: after
-every `WeightRepository.logWeight`/`deleteEntry` call, on a schedule, or
-on-demand when a trend screen opens. A DB trigger is also an option but
-isn't attempted here — this slice is data-layer only.
+or rotation. The recompute remains caller-driven; there is intentionally no
+background worker or database trigger in this slice. The current native UI
+calls it on the Weight screen's resume path, and callers that write weights
+outside the current UI must request a recompute explicitly.
 
 ## Precision: persisted trend values are display-rounded; in-engine values aren't
 

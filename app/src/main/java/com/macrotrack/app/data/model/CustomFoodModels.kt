@@ -3,6 +3,8 @@ package com.macrotrack.app.data.model
 import com.macrotrack.app.domain.Scalable
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.buildJsonObject
 
 /** Mirrors `public.custom_foods`. */
 @Serializable
@@ -18,6 +20,7 @@ data class CustomFood(
     @SerialName("protein_g") override val proteinG: Double,
     @SerialName("carbs_g") override val carbsG: Double,
     @SerialName("fat_g") override val fatG: Double,
+    val nutrients: JsonObject = buildJsonObject { },
 ) : Scalable
 
 /** Insert payload for a new custom food. `user_id` is filled in by the repository from the current session, never trusted from the caller. */

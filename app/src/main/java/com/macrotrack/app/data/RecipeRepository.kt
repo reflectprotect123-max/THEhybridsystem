@@ -15,6 +15,7 @@ interface RecipeRepository {
     suspend fun addItem(recipeId: String, foodId: String?, customFoodId: String?, quantity: Double, unit: String, sortOrder: Int): RecipeItem
     suspend fun getItems(recipeId: String): List<RecipeItem>
     suspend fun getById(id: String): Recipe?
+    suspend fun delete(id: String)
 }
 
 class SupabaseRecipeRepository(private val client: SupabaseClient) : RecipeRepository {
@@ -34,7 +35,10 @@ class SupabaseRecipeRepository(private val client: SupabaseClient) : RecipeRepos
     }
 
     override suspend fun create(name: String, description: String?, instructions: String?, servings: Double): Recipe {
-        require(servings > 0) { "servings must be > 0 (matches the recipes.servings > 0 check constraint)" }
+        require(name.isNotBlank()) { "Recipe name must not be blank" }
+        require(servings.isFinite() && servings > 0) {
+            "servings must be finite and > 0 (matches the recipes.servings > 0 check constraint)"
+        }
         val payload = NewRecipe(
             userId = requireUserId(),
             name = name,
@@ -56,6 +60,8 @@ class SupabaseRecipeRepository(private val client: SupabaseClient) : RecipeRepos
         require((foodId != null) != (customFoodId != null)) {
             "Exactly one of foodId or customFoodId must be set (matches the recipe_items check constraint)"
         }
+        require(quantity.isFinite() && quantity > 0) { "quantity must be greater than 0" }
+        require(unit.isNotBlank()) { "unit must not be blank" }
         val payload = NewRecipeItem(
             recipeId = recipeId,
             foodId = foodId,
@@ -79,5 +85,15 @@ class SupabaseRecipeRepository(private val client: SupabaseClient) : RecipeRepos
             filter { eq("id", id) }
             limit(1)
         }.decodeSingleOrNull<Recipe>()
+    }
+
+    override suspend fun delete(id: String) {
+        val userId = requireUserId()
+        client.postgrest.from("recipes").delete {
+            filter {
+                eq("id", id)
+                eq("user_id", userId)
+            }
+        }
     }
 }

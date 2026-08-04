@@ -17,15 +17,16 @@ import java.time.LocalDate
 import java.time.OffsetDateTime
 
 interface CheckInRepository {
-    suspend fun getCheckIn(weekStart: LocalDate): PersistedCheckIn?
+    suspend fun getCheckIn(weekStart: LocalDate, programId: String? = null): PersistedCheckIn?
     suspend fun recomputeCheckIn(
         weekStart: LocalDate,
         weekEnd: LocalDate,
         targetRateKgPerWeek: Double,
+        programId: String? = null,
         proteinGPerKg: Double = EngineConfig().defaultProteinGPerKg,
         fatGPerKg: Double = EngineConfig().defaultFatGPerKg,
     ): CheckInResult
-    suspend fun resolve(weekStart: LocalDate, accepted: Boolean): PersistedCheckIn
+    suspend fun resolve(weekStart: LocalDate, accepted: Boolean, programId: String? = null): PersistedCheckIn
 }
 
 class SupabaseCheckInRepository(
@@ -40,12 +41,13 @@ class SupabaseCheckInRepository(
             ?: error("CheckInRepository used before a user session exists.")
     }
 
-    override suspend fun getCheckIn(weekStart: LocalDate): PersistedCheckIn? {
+    override suspend fun getCheckIn(weekStart: LocalDate, programId: String?): PersistedCheckIn? {
         val userId = requireUserId()
         return client.postgrest.from("weekly_check_ins").select {
             filter {
                 eq("user_id", userId)
                 eq("week_start", weekStart.toString())
+                if (programId != null) eq("program_id", programId)
             }
             limit(1)
         }.decodeSingleOrNull<PersistedCheckIn>()
@@ -55,6 +57,7 @@ class SupabaseCheckInRepository(
         weekStart: LocalDate,
         weekEnd: LocalDate,
         targetRateKgPerWeek: Double,
+        programId: String?,
         proteinGPerKg: Double,
         fatGPerKg: Double,
     ): CheckInResult {
@@ -88,6 +91,7 @@ class SupabaseCheckInRepository(
         val modules = Json.encodeToJsonElement(result.modules.map { CheckInModuleDto(key = it.key, action = it.action) }).jsonArray
         val payload = NewCheckIn(
             userId = userId,
+            programId = programId,
             weekStart = weekStart.toString(),
             weekEnd = weekEnd.toString(),
             status = status,
@@ -114,26 +118,26 @@ class SupabaseCheckInRepository(
         )
         // weekly_check_ins has a surrogate `id` primary key (never present in
         // this payload -- it's server-generated) SEPARATE from its actual
-        // natural key, unique(user_id, week_start). Without an explicit
+        // natural key, unique(user_id, program_id, week_start). Without an explicit
         // onConflict, postgrest-kt's upsert defaults to targeting the table's
         // primary key -- since `id` is never in the payload, that "conflict"
         // never fires, and a second recompute of the same week would hit the
-        // (user_id, week_start) unique constraint directly and throw a raw
+        // (user_id, program_id, week_start) unique constraint directly and throw a raw
         // duplicate-key error instead of updating the existing row. This is
         // unlike DayStatusRepository/TrendRepository's tables, where the
         // composite natural key IS the primary key, so the same unset-onConflict
         // pattern happens to work there.
         client.postgrest.from("weekly_check_ins").upsert(payload) {
-            onConflict = "user_id,week_start"
+            onConflict = "user_id,program_id,week_start"
             select()
         }.decodeSingle<PersistedCheckIn>()
 
         return result
     }
 
-    override suspend fun resolve(weekStart: LocalDate, accepted: Boolean): PersistedCheckIn {
+    override suspend fun resolve(weekStart: LocalDate, accepted: Boolean, programId: String?): PersistedCheckIn {
         val userId = requireUserId()
-        val existing = getCheckIn(weekStart)
+        val existing = getCheckIn(weekStart, programId)
             ?: error("No check-in found for week_start=$weekStart")
         require(existing.status == "pending") {
             "Only a pending check-in can be resolved, got status='${existing.status}' for week_start=$weekStart"
@@ -145,6 +149,7 @@ class SupabaseCheckInRepository(
             filter {
                 eq("user_id", userId)
                 eq("week_start", weekStart.toString())
+                if (programId != null) eq("program_id", programId)
                 // Compare-and-set: without this, two concurrent resolves (or
                 // a stale UI) could both pass the require() above and the
                 // second would silently overwrite the first's outcome. A

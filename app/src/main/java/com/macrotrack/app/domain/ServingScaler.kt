@@ -21,6 +21,10 @@ object ServingScaler {
     class IncompatibleUnitException(message: String) : Exception(message)
 
     fun scale(food: Scalable, quantity: Double, unit: String): ScaledMacros {
+        require(quantity.isFinite() && quantity > 0) { "quantity must be finite and > 0, got $quantity" }
+        require(food.servingQty.isFinite() && food.servingQty > 0) {
+            "${food.name} has an invalid serving quantity ${food.servingQty}"
+        }
         if (!unit.equals(food.servingUnit, ignoreCase = true)) {
             throw IncompatibleUnitException(
                 "Cannot scale ${food.name}: requested unit '$unit' does not match " +
@@ -33,6 +37,9 @@ object ServingScaler {
     }
 
     fun scaleByServing(food: Scalable, serving: FoodServing, servingCount: Double = 1.0): ScaledMacros {
+        require(servingCount.isFinite() && servingCount > 0) {
+            "servingCount must be finite and > 0, got $servingCount"
+        }
         require(serving.foodId == food.id) {
             "Serving ${serving.id} belongs to food ${serving.foodId}, not ${food.id}"
         }
@@ -44,6 +51,12 @@ object ServingScaler {
         } ?: throw IncompatibleUnitException(
             "Serving '${serving.label}' for ${food.name} has no $basisUnit conversion recorded."
         )
+        require(perServingAmount.isFinite() && perServingAmount > 0) {
+            "Serving '${serving.label}' has an invalid amount $perServingAmount"
+        }
+        require(food.servingQty.isFinite() && food.servingQty > 0) {
+            "${food.name} has an invalid serving quantity ${food.servingQty}"
+        }
         val multiplier = (perServingAmount * servingCount) / food.servingQty
         return scaleByMultiplier(food, multiplier)
     }
