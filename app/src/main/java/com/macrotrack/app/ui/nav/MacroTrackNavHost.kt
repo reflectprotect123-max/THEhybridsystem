@@ -27,6 +27,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.macrotrack.app.data.AppContainer
 import com.macrotrack.app.data.model.EntryKind
+import com.macrotrack.app.domain.ParsedNutritionLabel
 import com.macrotrack.app.ui.auth.AuthScreen
 import com.macrotrack.app.ui.auth.AuthViewModel
 import com.macrotrack.app.ui.coach.CoachScreen
@@ -40,6 +41,7 @@ import com.macrotrack.app.ui.search.FoodSearchScreen
 import com.macrotrack.app.ui.search.FoodSearchViewModel
 import com.macrotrack.app.ui.search.CreateCustomFoodScreen
 import com.macrotrack.app.ui.search.CreateCustomFoodViewModel
+import com.macrotrack.app.ui.search.NutritionLabelScannerScreen
 import com.macrotrack.app.ui.search.QuickAddScreen
 import com.macrotrack.app.ui.search.QuickAddViewModel
 import com.macrotrack.app.ui.search.RecipeBuilderScreen
@@ -279,6 +281,49 @@ fun MacroTrackNavHost(appContainer: AppContainer) {
                                 }
                             },
                         )
+                        val scannedCalories by createFoodBackStackEntry.savedStateHandle
+                            .getStateFlow<Double?>(Destinations.SCANNED_LABEL_CALORIES_KEY, null)
+                            .collectAsState()
+                        val scannedProtein by createFoodBackStackEntry.savedStateHandle
+                            .getStateFlow<Double?>(Destinations.SCANNED_LABEL_PROTEIN_KEY, null)
+                            .collectAsState()
+                        val scannedCarbs by createFoodBackStackEntry.savedStateHandle
+                            .getStateFlow<Double?>(Destinations.SCANNED_LABEL_CARBS_KEY, null)
+                            .collectAsState()
+                        val scannedFat by createFoodBackStackEntry.savedStateHandle
+                            .getStateFlow<Double?>(Destinations.SCANNED_LABEL_FAT_KEY, null)
+                            .collectAsState()
+                        val scannedServingQty by createFoodBackStackEntry.savedStateHandle
+                            .getStateFlow<Double?>(Destinations.SCANNED_LABEL_SERVING_QTY_KEY, null)
+                            .collectAsState()
+                        val scannedServingUnit by createFoodBackStackEntry.savedStateHandle
+                            .getStateFlow<String?>(Destinations.SCANNED_LABEL_SERVING_UNIT_KEY, null)
+                            .collectAsState()
+
+                        LaunchedEffect(scannedCalories, scannedProtein, scannedCarbs, scannedFat, scannedServingQty, scannedServingUnit) {
+                            val gotAnyField = listOf(
+                                scannedCalories, scannedProtein, scannedCarbs, scannedFat, scannedServingQty,
+                            ).any { it != null } || scannedServingUnit != null
+                            if (gotAnyField) {
+                                createViewModel.onNutritionLabelScanned(
+                                    ParsedNutritionLabel(
+                                        calories = scannedCalories,
+                                        proteinG = scannedProtein,
+                                        carbsG = scannedCarbs,
+                                        fatG = scannedFat,
+                                        servingQty = scannedServingQty,
+                                        servingUnit = scannedServingUnit,
+                                    ),
+                                )
+                                createFoodBackStackEntry.savedStateHandle[Destinations.SCANNED_LABEL_CALORIES_KEY] = null
+                                createFoodBackStackEntry.savedStateHandle[Destinations.SCANNED_LABEL_PROTEIN_KEY] = null
+                                createFoodBackStackEntry.savedStateHandle[Destinations.SCANNED_LABEL_CARBS_KEY] = null
+                                createFoodBackStackEntry.savedStateHandle[Destinations.SCANNED_LABEL_FAT_KEY] = null
+                                createFoodBackStackEntry.savedStateHandle[Destinations.SCANNED_LABEL_SERVING_QTY_KEY] = null
+                                createFoodBackStackEntry.savedStateHandle[Destinations.SCANNED_LABEL_SERVING_UNIT_KEY] = null
+                            }
+                        }
+
                         CreateCustomFoodScreen(
                             viewModel = createViewModel,
                             onSaved = { id ->
@@ -289,6 +334,7 @@ fun MacroTrackNavHost(appContainer: AppContainer) {
                                 }
                             },
                             onCancel = { navController.popBackStack() },
+                            onScanNutritionLabel = { navController.navigate(Destinations.NUTRITION_LABEL_SCANNER) },
                         )
                     }
                     composable(
@@ -322,6 +368,21 @@ fun MacroTrackNavHost(appContainer: AppContainer) {
                                 navController.previousBackStackEntry
                                     ?.savedStateHandle
                                     ?.set(Destinations.SCANNED_BARCODE_KEY, barcode)
+                                navController.popBackStack()
+                            },
+                            onClose = { navController.popBackStack() },
+                        )
+                    }
+                    composable(Destinations.NUTRITION_LABEL_SCANNER) {
+                        NutritionLabelScannerScreen(
+                            onResult = { result ->
+                                val previous = navController.previousBackStackEntry?.savedStateHandle
+                                previous?.set(Destinations.SCANNED_LABEL_CALORIES_KEY, result.calories)
+                                previous?.set(Destinations.SCANNED_LABEL_PROTEIN_KEY, result.proteinG)
+                                previous?.set(Destinations.SCANNED_LABEL_CARBS_KEY, result.carbsG)
+                                previous?.set(Destinations.SCANNED_LABEL_FAT_KEY, result.fatG)
+                                previous?.set(Destinations.SCANNED_LABEL_SERVING_QTY_KEY, result.servingQty)
+                                previous?.set(Destinations.SCANNED_LABEL_SERVING_UNIT_KEY, result.servingUnit)
                                 navController.popBackStack()
                             },
                             onClose = { navController.popBackStack() },

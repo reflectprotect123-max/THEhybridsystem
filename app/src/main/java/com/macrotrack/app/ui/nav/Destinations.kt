@@ -11,6 +11,13 @@ object Destinations {
     const val BARCODE_SCANNER = "barcode_scanner"
     private const val CREATE_CUSTOM_FOOD_BASE = "create_custom_food"
     const val SCANNED_BARCODE_KEY = "scanned_barcode"
+    const val NUTRITION_LABEL_SCANNER = "nutrition_label_scanner"
+    const val SCANNED_LABEL_CALORIES_KEY = "scanned_label_calories"
+    const val SCANNED_LABEL_PROTEIN_KEY = "scanned_label_protein"
+    const val SCANNED_LABEL_CARBS_KEY = "scanned_label_carbs"
+    const val SCANNED_LABEL_FAT_KEY = "scanned_label_fat"
+    const val SCANNED_LABEL_SERVING_QTY_KEY = "scanned_label_serving_qty"
+    const val SCANNED_LABEL_SERVING_UNIT_KEY = "scanned_label_serving_unit"
 
     private const val ADD_LOG_ENTRY_BASE = "add_log_entry"
     const val FOOD_SEARCH_PATTERN = "$FOOD_SEARCH_BASE/{logDate}"
