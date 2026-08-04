@@ -7,12 +7,17 @@ every future change.
 
 ## Where the real repo lives
 
-- GitHub: `reflectprotect123-max/thehybridsystem`
+- GitHub: https://github.com/reflectprotect123-max/THEhybridsystem
 - Branch: `claude/macro-factor-app-dev-6twv5o` (everything below is on this
   branch, fully pushed)
 - Open PR: **#1** — https://github.com/reflectprotect123-max/THEhybridsystem/pull/1
   (base branch `main`, created against the project's actual root commit —
   see the PR description for why a `main` branch had to be created)
+- Clone directly onto this branch:
+  ```bash
+  git clone -b claude/macro-factor-app-dev-6twv5o \
+    https://github.com/reflectprotect123-max/THEhybridsystem.git
+  ```
 - This zip is a point-in-time snapshot of that branch. **Prefer cloning from
   GitHub over unzipping** if there's any doubt about freshness — the repo is
   the source of truth, not this file.
