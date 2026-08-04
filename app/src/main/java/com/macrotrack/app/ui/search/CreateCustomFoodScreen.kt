@@ -9,6 +9,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -26,6 +27,7 @@ fun CreateCustomFoodScreen(
     viewModel: CreateCustomFoodViewModel,
     onSaved: (String) -> Unit,
     onCancel: () -> Unit,
+    onScanNutritionLabel: () -> Unit,
 ) {
     val state by viewModel.uiState.collectAsState()
 
@@ -81,6 +83,11 @@ fun CreateCustomFoodScreen(
             )
         }
         item { Text("Nutrition for that serving", style = MaterialTheme.typography.titleMedium) }
+        item {
+            OutlinedButton(onClick = onScanNutritionLabel, modifier = Modifier.fillMaxWidth()) {
+                Text("Scan nutrition label")
+            }
+        }
         item { NutritionField("Calories", state.calories, viewModel::onCaloriesChanged) }
         item { NutritionField("Protein (g)", state.proteinG, viewModel::onProteinChanged) }
         item { NutritionField("Carbohydrate (g)", state.carbsG, viewModel::onCarbsChanged) }
