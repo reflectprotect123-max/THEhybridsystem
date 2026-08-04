@@ -3,6 +3,7 @@ package com.macrotrack.app.ui.search
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.macrotrack.app.data.CustomFoodRepository
+import com.macrotrack.app.domain.ParsedNutritionLabel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -101,6 +102,27 @@ class CreateCustomFoodViewModel(
                     errorMessage = e.message ?: "Couldn't create custom food",
                 )
             }
+        }
+    }
+
+    /**
+     * Pre-fills only the fields the parser was confident about, and only if
+     * the user hasn't already typed something into that field - a scan never
+     * overwrites a value the user already entered, matching the "never
+     * silently overwrite" rule this app applies everywhere OCR/import
+     * touches user-facing data.
+     */
+    fun onNutritionLabelScanned(result: ParsedNutritionLabel) {
+        _uiState.value = _uiState.value.let { state ->
+            state.copy(
+                calories = state.calories.ifBlank { result.calories?.toString() ?: "" },
+                proteinG = state.proteinG.ifBlank { result.proteinG?.toString() ?: "" },
+                carbsG = state.carbsG.ifBlank { result.carbsG?.toString() ?: "" },
+                fatG = state.fatG.ifBlank { result.fatG?.toString() ?: "" },
+                servingQty = state.servingQty.ifBlank { result.servingQty?.toString() ?: "" },
+                servingUnit = state.servingUnit.ifBlank { result.servingUnit ?: "" },
+                errorMessage = null,
+            )
         }
     }
 
