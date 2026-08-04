@@ -1,4 +1,5 @@
 .gradle/
+.gradle-cache/
 build/
 */build/
 local.properties
@@ -9,3 +10,4 @@ __pycache__/
 *.py[cod]
 seed_foods_*.sql
 supabase/.temp/
+.superpowers/
