@@ -4,7 +4,6 @@ import android.Manifest
 import android.app.Activity
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.graphics.Bitmap
 import android.net.Uri
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -129,6 +128,9 @@ fun NutritionLabelScannerScreen(
         }
     }
     var imageCapture by remember { mutableStateOf<ImageCapture?>(null) }
+    val textRecognizer = remember {
+        TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+    }
 
     Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
         androidx.compose.ui.viewinterop.AndroidView(
@@ -171,6 +173,7 @@ fun NutritionLabelScannerScreen(
             onDispose {
                 disposed = true
                 cameraProvider?.unbindAll()
+                textRecognizer.close()
             }
         }
 
@@ -186,6 +189,7 @@ fun NutritionLabelScannerScreen(
                     imageCapture = capture,
                     executor = Executors.newSingleThreadExecutor(),
                     mainExecutor = ContextCompat.getMainExecutor(context),
+                    textRecognizer = textRecognizer,
                     onLines = { lines ->
                         isProcessing = false
                         val result = NutritionLabelParser.parse(lines)
@@ -210,6 +214,7 @@ private fun captureAndRecognize(
     imageCapture: ImageCapture,
     executor: java.util.concurrent.Executor,
     mainExecutor: java.util.concurrent.Executor,
+    textRecognizer: com.google.mlkit.vision.text.TextRecognizer,
     onLines: (List<OcrLine>) -> Unit,
     onError: () -> Unit,
 ) {
@@ -225,8 +230,7 @@ private fun captureAndRecognize(
                     return
                 }
                 val inputImage = InputImage.fromMediaImage(mediaImage, image.imageInfo.rotationDegrees)
-                val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
-                recognizer.process(inputImage)
+                textRecognizer.process(inputImage)
                     .addOnSuccessListener(mainExecutor) { text ->
                         val lines = text.textBlocks.flatMap { it.lines }.mapNotNull { line ->
                             line.boundingBox?.let { box ->
@@ -244,6 +248,7 @@ private fun captureAndRecognize(
             }
         },
     )
+    executor.shutdown()
 }
 
 @Composable
