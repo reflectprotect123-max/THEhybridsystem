@@ -1,0 +1,44 @@
+name: Generate food seed SQL
+
+on:
+  workflow_dispatch:
+    inputs:
+      max_pages:
+        description: "Open Food Facts API pages to fetch (0 = all available pages, page size 100)"
+        required: true
+        default: "30"
+
+jobs:
+  generate:
+    name: Import Open Food Facts (Australia) and output seed SQL
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install requests
+
+      - name: Run importer
+        run: |
+          python import_openfoodfacts.py \
+            --output seed_foods_off.sql \
+            --max-pages "${{ inputs.max_pages }}"
+
+      - name: Summarize output
+        run: |
+          echo "Generated file size:"
+          ls -lh seed_foods_off.sql
+          echo "INSERT statement count:"
+          grep -c "^INSERT INTO" seed_foods_off.sql || true
+
+      - name: Upload seed SQL
+        uses: actions/upload-artifact@v4
+        with:
+          name: seed_foods_off
+          path: seed_foods_off.sql
