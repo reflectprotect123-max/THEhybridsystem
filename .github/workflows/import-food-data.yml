@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       max_pages:
-        description: "Open Food Facts API pages to fetch (0 = all available pages, page size 100)"
+        description: "Open Food Facts API pages to fetch this run (0 = all remaining pages, page size 50)"
         required: true
         default: "8"
   push:
@@ -30,32 +30,66 @@ jobs:
       - name: Install dependencies
         run: pip install requests
 
+      - name: Read resume cursor from the scratch branch
+        id: resume
+        run: |
+          start_page=1
+          if git ls-remote --exit-code --heads origin data/off-seed-import > /dev/null 2>&1; then
+            git fetch origin data/off-seed-import
+            fetched="$(git show origin/data/off-seed-import:off_seed_cursor.txt 2>/dev/null || true)"
+            if [ -n "$fetched" ]; then
+              start_page="$fetched"
+            fi
+          fi
+          echo "Resuming from page $start_page"
+          echo "start_page=$start_page" >> "$GITHUB_OUTPUT"
+
       - name: Run importer
+        id: import
         run: |
           python import_openfoodfacts.py \
-            --output seed_foods_off.sql \
+            --output seed_foods_off_batch.sql \
+            --start-page "${{ steps.resume.outputs.start_page }}" \
             --max-pages "${{ inputs.max_pages || '8' }}" \
             --page-size 50 \
-            --sleep-seconds 4
+            --sleep-seconds 4 \
+            | tee import.log
+          next_page="$(grep -o 'NEXT_START_PAGE=[0-9]*' import.log | cut -d= -f2)"
+          echo "next_page=${next_page:-${{ steps.resume.outputs.start_page }}}" >> "$GITHUB_OUTPUT"
+          rows_written="$(grep -o 'Rows written: [0-9]*' import.log | grep -o '[0-9]*$')"
+          echo "rows_written=${rows_written:-0}" >> "$GITHUB_OUTPUT"
 
       - name: Summarize output
         run: |
           echo "Generated file size:"
-          ls -lh seed_foods_off.sql
-          echo "INSERT statement count:"
-          grep -c "^INSERT INTO" seed_foods_off.sql || true
+          ls -lh seed_foods_off_batch.sql
+          echo "Resumed from page ${{ steps.resume.outputs.start_page }}, next run resumes from page ${{ steps.import.outputs.next_page }}"
 
-      - name: Upload seed SQL
+      - name: Upload seed SQL batch
+        if: steps.import.outputs.rows_written != '0'
         uses: actions/upload-artifact@v4
         with:
-          name: seed_foods_off
-          path: seed_foods_off.sql
+          name: seed_foods_off_batch_${{ steps.resume.outputs.start_page }}
+          path: seed_foods_off_batch.sql
 
-      - name: Push seed SQL to a scratch branch
+      - name: Push batch and updated cursor to the scratch branch
+        if: steps.import.outputs.rows_written != '0'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git checkout -B data/off-seed-import
-          git add -f seed_foods_off.sql
-          git commit -m "Generate Open Food Facts (Australia) seed SQL (run ${{ github.run_id }})"
-          git push -f origin data/off-seed-import
+
+          batch_file="seed_foods_off_batch_${{ steps.resume.outputs.start_page }}.sql"
+          mv seed_foods_off_batch.sql "$batch_file"
+
+          if git ls-remote --exit-code --heads origin data/off-seed-import > /dev/null 2>&1; then
+            git fetch origin data/off-seed-import
+            git checkout -B data/off-seed-import origin/data/off-seed-import
+          else
+            git checkout --orphan data/off-seed-import
+            git reset --hard
+          fi
+
+          echo "${{ steps.import.outputs.next_page }}" > off_seed_cursor.txt
+          git add -f "$batch_file" off_seed_cursor.txt
+          git commit -m "Add OFF batch: pages ${{ steps.resume.outputs.start_page }}-$(( ${{ steps.import.outputs.next_page }} - 1 )) (run ${{ github.run_id }})"
+          git push origin data/off-seed-import
