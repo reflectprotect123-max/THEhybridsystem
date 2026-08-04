@@ -84,4 +84,31 @@ class NutritionLabelParserTest {
         assertEquals(2.1, result.fatG!!, 0.001)
         assertEquals(15.6, result.carbsG!!, 0.001)
     }
+
+    @Test
+    fun parsesServingSizeFromParentheticalGrams() {
+        val lines = listOf(
+            OcrLine("Serving size: 2 biscuits (30g)", left = 0, top = 50, right = 300, bottom = 70),
+            OcrLine("Energy", left = 0, top = 100, right = 80, bottom = 120),
+            OcrLine("124Cal", left = 200, top = 100, right = 260, bottom = 120),
+        )
+
+        val result = NutritionLabelParser.parse(lines)
+
+        assertEquals(30.0, result.servingQty!!, 0.001)
+        assertEquals("g", result.servingUnit)
+    }
+
+    @Test
+    fun leavesServingSizeNullWhenNoServingSizeLineIsPresent() {
+        val lines = listOf(
+            OcrLine("Energy", left = 0, top = 100, right = 80, bottom = 120),
+            OcrLine("124Cal", left = 200, top = 100, right = 260, bottom = 120),
+        )
+
+        val result = NutritionLabelParser.parse(lines)
+
+        assertNull(result.servingQty)
+        assertNull(result.servingUnit)
+    }
 }
