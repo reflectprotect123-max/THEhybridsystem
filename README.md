@@ -30,7 +30,12 @@ examples/checkin.json                         Engine CLI example
 * `requests` only when using Open Food Facts API mode.
 * No pandas or Excel package is required. XLSX files are read with the Python
   standard library. Binary `.xls` files must be saved as CSV/TSV/XLSX first.
-* Android Studio with the Android 17/API 37 SDK for the Android module.
+* Android Studio with the Android 16/API 36 SDK for the Android module.
+  (`compileSdk`/`targetSdk` were originally set to the not-yet-released API 37;
+  confirmed against Google's published platform list on 2026-08-04 that API 37
+  is not yet available to install, so the module currently targets the latest
+  real, installable platform, API 36. Bump back to 37 once Google publishes
+  it.)
 
 ```bash
 cd /workspace/macrotrack

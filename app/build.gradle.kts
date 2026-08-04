@@ -22,12 +22,12 @@ fun quotedBuildConfig(name: String): String {
 
 android {
     namespace = "com.macrotrack.app"
-    compileSdk = 37
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.macrotrack.app"
         minSdk = 26
-        targetSdk = 37
+        targetSdk = 36
         versionCode = 1
         versionName = "0.1.0"
 
