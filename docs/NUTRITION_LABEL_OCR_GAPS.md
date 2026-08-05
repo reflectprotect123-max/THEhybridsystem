@@ -137,15 +137,21 @@ a build:
    background executor: `captureExecutor` is created once via `remember` in
    `NutritionLabelScannerScreen` (alongside `textRecognizer`) and shut down
    in the same `onDispose` that unbinds the camera and closes the
-   recognizer - mirroring `BarcodeScannerScreen.kt`'s own executor lifecycle
-   exactly. This resolves the original Task 3 "leaked executor" finding
+   recognizer. This resolves the original Task 3 "leaked executor" finding
    properly (one long-lived executor, disposed once) rather than by
    eliminating background work altogether. `takePicture` is called with
    `captureExecutor`; `onError()` calls inside `onCaptureSuccess` and the
    sibling `onError(ImageCaptureException)` override are now dispatched via
    `mainExecutor.execute(onError)` again, since that code runs on
    `captureExecutor` (a background thread) and mutates Compose state, which
-   must happen on the main thread.
+   must happen on the main thread. Note: this does *not* mirror
+   `BarcodeScannerScreen.kt`'s executor lifecycle exactly, as originally
+   claimed here - that screen creates its executor inside the same
+   `DisposableEffect` that disposes it, so its creation and disposal scopes
+   are identical by construction. This screen's `captureExecutor`/
+   `textRecognizer` are created in a plain `remember` but disposed inside
+   `DisposableEffect(previewView, lifecycleOwner)` - a narrower scope. See
+   "Known limitations carried forward" below.
 2. **`catch (e: Exception)` does not catch `OutOfMemoryError`** (an `Error`,
    not an `Exception`) - the single most likely throwable from decoding a
    full-resolution still, and exactly the failure mode fix #1 above makes
@@ -155,11 +161,22 @@ a build:
    `mainExecutor.execute(onError)` so the retry prompt still surfaces
    instead of a silently stuck spinner. Also added a bounds-then-downsample
    decode pass (`BitmapFactory.Options.inJustDecodeBounds` to read
-   dimensions, then `inSampleSize` to cap the decoded bitmap's long side at
-   `MAX_DECODED_DIMENSION_PX = 2048`) to reduce how often `OutOfMemoryError`
-   is hit in the first place, not just to catch it - ML Kit's text
-   recognizer doesn't need more than a couple thousand pixels on the long
-   side to read a nutrition panel's text.
+   dimensions, then `inSampleSize` via `calculateInSampleSize` to cap the
+   decoded bitmap's long side at `MAX_DECODED_DIMENSION_PX = 2048`) to
+   reduce how often `OutOfMemoryError` is hit in the first place, not just
+   to catch it - ML Kit's text recognizer doesn't need more than a couple
+   thousand pixels on the long side to read a nutrition panel's text. An
+   earlier version of `calculateInSampleSize`'s loop condition only
+   guaranteed the long side stayed under `2 x MAX_DECODED_DIMENSION_PX`
+   (4096) - loose enough that the single most common phone photo resolution
+   (~12 MP, e.g. 4000x3000) got no downsampling at all and still decoded a
+   ~45 MB bitmap, undermining the point of the fix. Corrected the loop
+   condition (`while (w > maxDimensionPx || h > maxDimensionPx)`, halving
+   until both dimensions are truly at or under the target) and confirmed by
+   hand for several concrete resolutions: 4000x3000 -&gt; 2000x1500 (sample 2,
+   ~12 MB); 8160x6120 -&gt; 2040x1530 (sample 4, ~12 MB); 4096x3072 -&gt;
+   2048x1536 (sample 2); 1600x1200 stays unchanged (sample 1, already under
+   the target).
 3. **The row-grouping tolerance fix from round 1 (median line height x 0.5)
    can chain-merge separate macro rows into one wrong reading.** A photo can
    pick up as much unrelated, much taller text (a title, an ingredients
@@ -208,6 +225,29 @@ These fail safe - a limitation here means a blank field and a retry prompt,
 never a wrong or invented number - so they were deliberately left as
 follow-up rather than blocking this merge:
 
+- **`captureExecutor` and `textRecognizer` are created in a plain `remember`
+  but disposed inside `DisposableEffect(previewView, lifecycleOwner)`** - a
+  narrower recomposition scope than the `remember`. If either key were ever
+  invalidated (neither is expected to change today - `previewView` is itself
+  `remember(context)` and `lifecycleOwner` is the nav back-stack entry's
+  lifecycle), the effect would dispose and shut down the executor/recognizer
+  while the outer `remember` kept holding the same, now-terminated instances,
+  reproducing round 1's Critical-1 failure mode (a capture silently never
+  completing) under a narrower trigger. Cheap fix if this ever becomes live:
+  give `captureExecutor`/`textRecognizer` their own
+  `DisposableEffect(Unit) { onDispose { ... } }` so creation and disposal
+  scopes match exactly, the way `BarcodeScannerScreen.kt` already does for
+  its own executor.
+- **The minimum-line-height row-tolerance fix is fragile in the opposite
+  direction from the median it replaced.** Round 1's median could be pulled
+  wide by several tall outlier lines, over-merging rows. The minimum can be
+  pulled tight by a single small stray bounding box (a speck, a stray
+  punctuation mark) misrecognized as its own tiny line, under-merging a row
+  that should have stayed together. This direction fails safe (a blank field
+  and a retry prompt, never a wrong number) and is no worse than the
+  original fixed-12px constant, but a more robust estimate (a low percentile
+  instead of a strict minimum, or ignoring implausibly small bounding boxes)
+  would reduce false retry prompts on real photos.
 - **Per-serving column selection is purely positional** (the leftmost value
   cell in a row), with no header-row detection. Correct for the standard
   FSANZ two-column ("per serving" then "per 100g") panel this app targets,

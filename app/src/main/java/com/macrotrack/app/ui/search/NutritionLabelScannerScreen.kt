@@ -289,12 +289,12 @@ private fun captureAndRecognize(
     )
 }
 
-/** Largest power-of-two downsample that still keeps both dimensions above [maxDimensionPx]. */
+/** Smallest power-of-two downsample that brings both dimensions to at most [maxDimensionPx]. */
 private fun calculateInSampleSize(width: Int, height: Int, maxDimensionPx: Int): Int {
     var sampleSize = 1
     var w = width
     var h = height
-    while (w / 2 >= maxDimensionPx || h / 2 >= maxDimensionPx) {
+    while (w > maxDimensionPx || h > maxDimensionPx) {
         w /= 2
         h /= 2
         sampleSize *= 2
