@@ -1,10 +1,21 @@
 #!/usr/bin/env python3
 """Create PostgreSQL seed INSERTs from Open Food Facts Australian products.
 
-The importer supports the Open Food Facts v2 search API and local JSON/JSONL
-or CSV/TSV exports.  It keeps products tagged for Australia, requires a
-barcode, product name, and the four macro values, and never invents a density
-for a serving whose unit cannot be reconciled with the source denominator.
+The importer supports the Open Food Facts Search-a-licious API
+(search.openfoodfacts.org) and local JSON/JSONL or CSV/TSV exports.  It keeps
+products tagged for Australia, requires a barcode, product name, and the four
+macro values, and never invents a density for a serving whose unit cannot be
+reconciled with the source denominator.
+
+The legacy ``/api/v2/search`` endpoint (world.openfoodfacts.org) started
+returning a persistent 401 on every page in August 2026, confirmed from three
+independent networks (a sandboxed CI-style environment, a GitHub Actions
+runner, and a residential connection) - not an IP-reputation block, and not
+something an API key fixes (the endpoint requires none). Search-a-licious is
+Open Food Facts' own recommended replacement for structured search and was
+verified working (real Australian products, real nutriments) before this
+importer was switched to it. ``--api-url`` can still override this if the
+legacy endpoint ever recovers or another mirror is preferred.
 
 The default output targets the enhanced ``foods`` table in
 ``supabase/migrations/001_macro_foundation.sql``.  ``--legacy-schema`` keeps
@@ -41,7 +52,8 @@ from seed_common import (
 )
 
 
-API_URL = "https://world.openfoodfacts.org/api/v2/search"
+API_URL = "https://search.openfoodfacts.org/search"
+AUSTRALIA_QUERY = 'countries_tags:"en:australia"'
 SOURCE_NAME = "openfoodfacts"
 REQUIRED_KEYS = ("protein", "carbs", "fat")
 
@@ -179,7 +191,6 @@ def iter_api_products(
         "serving_size",
         "nutrition_data_per",
         "countries_tags",
-        "countries_tags_en",
         "nutriments",
         "ingredients_text",
         "allergens_tags",
@@ -192,7 +203,8 @@ def iter_api_products(
     page = max(1, getattr(args, "start_page", 1))
     while True:
         params = {
-            "countries_tags_en": "australia",
+            "q": AUSTRALIA_QUERY,
+            "langs": "en",
             "fields": ",".join(fields),
             "page": page,
             "page_size": page_size,
@@ -211,7 +223,19 @@ def iter_api_products(
         assert response is not None
         response.raise_for_status()
         payload = response.json()
-        products = payload.get("products", [])
+        if "errors" in payload:
+            # Search-a-licious reports query-level problems as a 200 response
+            # with an "errors" list (ErrorSearchResponse) instead of an HTTP
+            # error status. Surface it rather than silently treating it as
+            # "no more products" - that would hide a real broken query.
+            print(
+                "WARNING: search API returned errors instead of results: {}".format(
+                    payload["errors"]
+                ),
+                file=sys.stderr,
+            )
+            break
+        products = payload.get("hits", [])
         if not isinstance(products, list) or not products:
             break
         yield from (item for item in products if isinstance(item, dict))

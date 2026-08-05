@@ -26,6 +26,21 @@ class _FakeStreamResponse:
         pass
 
 
+class _FakeSearchResponse:
+    """Minimal stand-in for requests.Response over a Search-a-licious JSON body."""
+
+    def __init__(self, payload: dict, status_code: int = 200) -> None:
+        self._payload = payload
+        self.status_code = status_code
+        self.headers: dict = {}
+
+    def raise_for_status(self) -> None:
+        pass
+
+    def json(self) -> dict:
+        return self._payload
+
+
 def _gzip_lines(text: str) -> bytes:
     buffer = io.BytesIO()
     with gzip.GzipFile(fileobj=buffer, mode="wb") as handle:
@@ -108,6 +123,72 @@ class ImporterTests(unittest.TestCase):
             self.assertNotIn("next_start_page", counters)
             sql = output.read_text(encoding="utf-8")
             self.assertIn("'Test Bar'", sql)
+
+    def test_iter_api_products_paginates_search_a_licious_hits(self) -> None:
+        page_one = {
+            "hits": [{"code": "1"}, {"code": "2"}],
+            "page": 1,
+            "page_size": 2,
+            "page_count": 2,
+            "count": 3,
+        }
+        page_two = {
+            "hits": [{"code": "3"}],
+            "page": 2,
+            "page_size": 2,
+            "page_count": 2,
+            "count": 3,
+        }
+        fake_session = SimpleNamespace(
+            get=mock.Mock(
+                side_effect=[_FakeSearchResponse(page_one), _FakeSearchResponse(page_two)]
+            )
+        )
+        fake_requests = SimpleNamespace(Session=mock.Mock(return_value=fake_session))
+
+        args = SimpleNamespace(
+            api_url=import_openfoodfacts.API_URL,
+            page_size=2,
+            max_pages=0,
+            start_page=1,
+            sleep_seconds=0,
+            timeout=30.0,
+            user_agent="test-agent/1.0",
+        )
+        with mock.patch.object(import_openfoodfacts, "get_requests", return_value=fake_requests):
+            progress: list = [0]
+            products = list(import_openfoodfacts.iter_api_products(args, progress=progress))
+
+        self.assertEqual([p["code"] for p in products], ["1", "2", "3"])
+        self.assertEqual(progress, [2])
+        self.assertEqual(fake_session.get.call_count, 2)
+        first_call_params = fake_session.get.call_args_list[0].kwargs["params"]
+        self.assertEqual(first_call_params["q"], import_openfoodfacts.AUSTRALIA_QUERY)
+        self.assertEqual(first_call_params["langs"], "en")
+        self.assertEqual(first_call_params["page"], 1)
+
+    def test_iter_api_products_stops_on_search_error_response(self) -> None:
+        error_payload = {
+            "debug": {"query": {}},
+            "errors": [{"title": "query parsing error"}],
+        }
+        fake_session = SimpleNamespace(get=mock.Mock(return_value=_FakeSearchResponse(error_payload)))
+        fake_requests = SimpleNamespace(Session=mock.Mock(return_value=fake_session))
+
+        args = SimpleNamespace(
+            api_url=import_openfoodfacts.API_URL,
+            page_size=50,
+            max_pages=0,
+            start_page=1,
+            sleep_seconds=0,
+            timeout=30.0,
+            user_agent="test-agent/1.0",
+        )
+        with mock.patch.object(import_openfoodfacts, "get_requests", return_value=fake_requests):
+            products = list(import_openfoodfacts.iter_api_products(args))
+
+        self.assertEqual(products, [])
+        fake_session.get.assert_called_once()
 
     def test_open_food_facts_legacy_output(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
