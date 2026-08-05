@@ -180,20 +180,25 @@ Also not done, not in CLAUDE.md's list but real gaps:
 - **No real Supabase project has been created or seeded** — schema and
   import pipeline are ready, nothing has actually been run against a live
   database.
-- **Food seed accumulation: ~7,700+ products and still growing** (Open Food
-  Facts, Australia-scoped) as of this update — see "Data import" below for
-  the full story. The earlier 401 blocker (stuck at 471/5000) is resolved;
-  the importer was switched from the dying legacy `/api/v2/search` endpoint
-  to OFF's own Search-a-licious replacement. An autonomous batch loop was
-  still running as of this write-up, re-triggering the GitHub Actions import
-  workflow every ~50-100 pages with no target cap ("go for MAX" per explicit
-  user request) — check `data/off-seed-import`'s `off_seed_cursor.txt` and
-  recent GitHub Actions runs for the live current count, this number is a
-  snapshot, not final. AUSNUT/NUTTAB is still not run (unrelated blocker,
-  needs manually-downloaded FSANZ files). Do not run the retailer-catalogue
-  scrapers (`build_retailer_catalogue.py` for Coles/Woolworths) — the user
-  explicitly declined that approach citing ToS/legal exposure, and those
-  scripts must remain in `scripts/` as documentation only, never executed.
+- **Food seed accumulation: 7,738 products, and this is the real ceiling of
+  this API path** (Open Food Facts, Australia-scoped). The earlier 401
+  blocker (stuck at 471/5000) is resolved via the Search-a-licious switch —
+  see "Data import" below — and an unattended batch loop then ran with no
+  target cap ("go for MAX" per explicit user request) until it hit a genuine
+  `400 Bad Request` from `search.openfoodfacts.org` at page 201 (offset
+  10,000). That's Elasticsearch's default `max_result_window`, and this
+  API's GET `/search` exposes no `search_after`/cursor parameter to page
+  past it — confirmed from the Search-a-licious OpenAPI spec, not assumed.
+  **7,738 is everything reachable through this endpoint**, not an arbitrary
+  stopping point. To get more Australia-tagged OFF products than this, the
+  next lever is the bulk `.jsonl.gz` export (`--input-url`, see "Data
+  import" below) rather than more of this same paginated API, since a flat
+  file has no result-window ceiling. AUSNUT/NUTTAB is still not run
+  (unrelated blocker, needs manually-downloaded FSANZ files). Do not run the
+  retailer-catalogue scrapers (`build_retailer_catalogue.py` for
+  Coles/Woolworths) — the user explicitly declined that approach citing
+  ToS/legal exposure, and those scripts must remain in `scripts/` as
+  documentation only, never executed.
 - App icon/branding, Play Store packaging — not started.
 - **Macro programs** — the active manual goal-rate is now persisted through
   `MacroProgramRepository`, weekly check-ins carry its `program_id`, and
@@ -274,14 +279,19 @@ there's doubt about any of the integrated flows.
 ## Data import — current status and blockers
 
 ### Accumulation progress
-- **Open Food Facts Australia**: ~7,700+ products and climbing (was stuck at
-  471/5000 as of the previous version of this doc). See "OFF endpoint fix"
-  below for the full diagnosis — the short version is the importer now
-  targets a different, working OFF API, and an unattended batch loop was
-  still running at the time of this update with no target cap. Check
-  `data/off-seed-import`'s `off_seed_cursor.txt` (the next page to resume
-  from) and recent runs of `.github/workflows/import-food-data.yml` for the
-  actual current total — do not trust the number above as final.
+- **Open Food Facts Australia: 7,738 products — final, this is the ceiling
+  of this API path**, up from 471/5000 as of the previous version of this
+  doc. See "OFF endpoint fix" below for the full diagnosis. An unattended
+  batch loop ran with no target cap until it hit a real `400 Bad Request`
+  at page 201 (offset 10,000) — Elasticsearch's default `max_result_window`,
+  with no `search_after`/cursor parameter exposed by this API to page past
+  it (checked against the actual OpenAPI spec, not assumed). Retrying page
+  201+ will keep failing; it is not a transient error. `data/off-seed-import`
+  holds the full set: `seed_foods_off_batch_{1,2,3,5,11,19,69,119}.sql` (one
+  file per accumulated run) plus `off_seed_cursor.txt` (stuck at 201 by
+  design now). To get more Australia-tagged OFF data than this, use the bulk
+  `.jsonl.gz` export instead (`--input` or `--input-url`, see below) — a flat
+  file has no result-window ceiling, unlike this paginated search endpoint.
 - **AUSNUT/NUTTAB**: Not run (depends on FSANZ Excel/CSV download + import
   script execution, possible but not attempted). This sandbox cannot reach
   `foodstandards.gov.au` either (same class of network-policy block as OFF
@@ -319,15 +329,16 @@ tests in `tests/test_importers.py` (`test_iter_api_products_paginates_search_a_l
 `test_iter_api_products_max_pages_counts_pages_fetched_not_absolute_page_number`,
 `test_iter_api_products_stops_on_search_error_response`).
 
-An earlier hypothesis that Elasticsearch's default `max_result_window`
-(10,000 hits) would hard-stop pagination around page 200 turned out to be
-wrong — a real run cleared page 200 with no error. There is no known ceiling
-as of this update; the loop was told to keep going until hits genuinely come
-back empty or a real error occurs.
+The Elasticsearch `max_result_window` hypothesis was tested directly rather
+than assumed: page 200 (offset 9,950–9,999) succeeded cleanly, and page 201
+(offset 10,000+) failed with a real `400 Bad Request`, matching the standard
+10,000-hit default exactly. **7,738 rows is the actual maximum obtainable
+through `search.openfoodfacts.org`'s GET `/search` for this query** — not an
+arbitrary stopping point, and not worth re-running to "try again."
 
 If `/api/v2/search` or Search-a-licious changes behavior again, re-diagnose
-before assuming either the old fix or the old blocker still applies — this
-is external infrastructure this repo doesn't control.
+before assuming either the old fix, the old blocker, or this ceiling still
+applies — this is external infrastructure this repo doesn't control.
 
 ### How to complete the imports
 
