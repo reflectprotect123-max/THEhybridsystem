@@ -1,4 +1,4 @@
-# MacroTrack — handoff (2026-08-05, final state before ChatGPT takeover)
+# MacroTrack — handoff (2026-08-05, updated after OFF seed pipeline fix)
 
 ## Native Android rebuild status
 
@@ -41,6 +41,27 @@ product/data rules that bind every future change.
      succeeded (compile Kotlin, Assemble debug APK, Run unit tests — all green).
    - Feature merged to main at commit 3e11009, verified on real Android SDK.
    - Details: `docs/NUTRITION_LABEL_OCR_GAPS.md`.
+5. **OFF seed pipeline unblocked** (2026-08-05, same day as #4): the food-seed
+   accumulation had stalled at 471/5000 products on a `401 Unauthorized` from
+   `world.openfoodfacts.org/api/v2/search`, reproduced identically across
+   three independent networks (a sandboxed CI-style environment, a GitHub
+   Actions runner, and a residential connection via the user's own machine) —
+   ruling out an IP-reputation block. OFF's own OpenAPI spec confirmed the
+   endpoint requires no auth, so a key wasn't the fix either. Root cause,
+   found by cloning `openfoodfacts/openfoodfacts-server` directly (the docs
+   site itself was unreachable from this sandbox): the legacy Perl-based
+   search backend behind `/api/v2/search` is being retired in favor of
+   **Search-a-licious** (`search.openfoodfacts.org`), OFF's own recommended
+   replacement. Verified live (real AU products, matching `nutriments` shape)
+   from the user's machine before switching. `import_openfoodfacts.py` now
+   targets that endpoint; a second real bug was found and fixed alongside it
+   — `--max-pages` was compared against the absolute page number instead of
+   pages fetched this run, so every resumed run past page 8 (the workflow's
+   default) silently capped itself to exactly one page. Both fixes are on
+   `claude/debug-build-compilation-ang4qd` (commits `6ae1f34`, `c2abe08`),
+   covered by two new regression tests in `tests/test_importers.py`, and
+   confirmed working via multiple real GitHub Actions runs. See "Data
+   import — current status" below for the live count.
 
 **Status change: the Android app has now been compiled for real.** The nutrition
 label OCR feature passed CI on actual `kotlinc` 2.1.0 + AGP + real Android SDK,
@@ -58,14 +79,19 @@ resolution had been checked) were corrected during the review.
 ## Where the real repo lives
 
 - GitHub: `reflectprotect123-max/thehybridsystem`
-- Branch: `claude/macro-factor-app-dev-6twv5o` (everything below is on this
-  branch, fully pushed)
-- Open PR: **#1** — https://github.com/reflectprotect123-max/THEhybridsystem/pull/1
-  (base branch `main`, created against the project's actual root commit —
-  see the PR description for why a `main` branch had to be created)
-- This zip is a point-in-time snapshot of that branch. **Prefer cloning from
-  GitHub over unzipping** if there's any doubt about freshness — the repo is
-  the source of truth, not this file.
+- `claude/macro-factor-app-dev-6twv5o` (the branch named in earlier versions
+  of this doc) was merged via PR #1 and is stale — don't develop on it.
+- Current work branch: `claude/debug-build-compilation-ang4qd`, which is
+  fast-forwarded to `main` plus the OFF seed pipeline fix commits
+  (`e802237`, `6ae1f34`, `c2abe08`) not yet merged back to `main`.
+- The generated seed SQL batches themselves live on a separate **scratch
+  branch**, `data/off-seed-import` — not `main` or the work branch (CLAUDE.md
+  rule #7: generated seed SQL is disposable, never committed to a real
+  branch). It holds `seed_foods_off_batch_*.sql` files and `off_seed_cursor.txt`
+  (the next page to resume from), both written automatically by the
+  `.github/workflows/import-food-data.yml` workflow.
+- Prefer cloning/fetching from GitHub over any local snapshot if there's any
+  doubt about freshness — the repo is the source of truth, not this file.
 
 ## What's actually done (backend — fully built, reviewed, never contradicted)
 
@@ -154,16 +180,20 @@ Also not done, not in CLAUDE.md's list but real gaps:
 - **No real Supabase project has been created or seeded** — schema and
   import pipeline are ready, nothing has actually been run against a live
   database.
-- **Food seed accumulation: 471/5000 products** (Open Food Facts + AUSNUT/
-  NUTTAB imports) — see "Data import" below. Python import scripts are tested
-  and ready; the bottleneck is the OFF public API, which is currently
-  returning 401 Unauthorized on page 11+. This is an external blocker,
-  not a code defect. Recommendation: check if the API recovers; if not within
-  24–48 hours, consider alternative data sources or licensed API access.
-  Do not run the retailer-catalogue scrapers (`build_retailer_catalogue.py`
-  for Coles/Woolworths) — the user explicitly declined that approach citing
-  ToS/legal exposure, and those scripts must remain in `scripts/` as
-  documentation only, never executed.
+- **Food seed accumulation: ~7,700+ products and still growing** (Open Food
+  Facts, Australia-scoped) as of this update — see "Data import" below for
+  the full story. The earlier 401 blocker (stuck at 471/5000) is resolved;
+  the importer was switched from the dying legacy `/api/v2/search` endpoint
+  to OFF's own Search-a-licious replacement. An autonomous batch loop was
+  still running as of this write-up, re-triggering the GitHub Actions import
+  workflow every ~50-100 pages with no target cap ("go for MAX" per explicit
+  user request) — check `data/off-seed-import`'s `off_seed_cursor.txt` and
+  recent GitHub Actions runs for the live current count, this number is a
+  snapshot, not final. AUSNUT/NUTTAB is still not run (unrelated blocker,
+  needs manually-downloaded FSANZ files). Do not run the retailer-catalogue
+  scrapers (`build_retailer_catalogue.py` for Coles/Woolworths) — the user
+  explicitly declined that approach citing ToS/legal exposure, and those
+  scripts must remain in `scripts/` as documentation only, never executed.
 - App icon/branding, Play Store packaging — not started.
 - **Macro programs** — the active manual goal-rate is now persisted through
   `MacroProgramRepository`, weekly check-ins carry its `program_id`, and
@@ -244,38 +274,85 @@ there's doubt about any of the integrated flows.
 ## Data import — current status and blockers
 
 ### Accumulation progress
-- **Open Food Facts Australia**: 471/5000 products harvested via 10 API pages
-  before hitting a `401 Unauthorized` response at page 11.
-  - **Blocker**: The OFF public API is currently inaccessible. This is an
-    external service outage/policy change, not a code defect.
-  - **Recommendation**: Check if the API recovers within 24–48 hours. If not,
-    consider: (a) contacting OFF support about API access, (b) downloading a
-    static data export from `https://world.openfoodfacts.org/data/`, or (c)
-    licensing a third-party food database.
+- **Open Food Facts Australia**: ~7,700+ products and climbing (was stuck at
+  471/5000 as of the previous version of this doc). See "OFF endpoint fix"
+  below for the full diagnosis — the short version is the importer now
+  targets a different, working OFF API, and an unattended batch loop was
+  still running at the time of this update with no target cap. Check
+  `data/off-seed-import`'s `off_seed_cursor.txt` (the next page to resume
+  from) and recent runs of `.github/workflows/import-food-data.yml` for the
+  actual current total — do not trust the number above as final.
 - **AUSNUT/NUTTAB**: Not run (depends on FSANZ Excel/CSV download + import
-  script execution, possible but not attempted).
+  script execution, possible but not attempted). This sandbox cannot reach
+  `foodstandards.gov.au` either (same class of network-policy block as OFF
+  originally appeared to be, confirmed via the outbound proxy's own status
+  endpoint) — needs to run from a machine with normal internet access, same
+  as OFF did.
 - **Retailer catalogues** (Coles, Woolworths): User explicitly declined running
   the scraper scripts (`build_retailer_catalogue.py`) due to ToS/legal exposure.
   These scripts are in `scripts/` for reference only; **do not execute them**.
 
+### OFF endpoint fix (2026-08-05) — read this before touching the importer again
+
+The 401 that stalled the seed at 471/5000 was **not** this sandbox's network
+policy, **not** an IP-reputation block, and **not** a missing API key —
+confirmed by reproducing the identical 401 on three independent networks
+(this sandbox, a real GitHub Actions runner, and the user's own residential
+machine), and by reading OFF's own OpenAPI spec (`docs/api/ref/api.yaml` in
+`openfoodfacts/openfoodfacts-server`), which explicitly marks
+`/api/v2/search` as requiring no auth. The real cause: that endpoint's
+legacy Perl/MongoDB-based search backend is being retired. OFF's own
+recommended replacement, **Search-a-licious** (`search.openfoodfacts.org`),
+was verified working live (real Australian products, matching `nutriments`
+shape — `{"proteins_100g": ..., "carbohydrates_100g": ..., ...}`, same as
+before) before `import_openfoodfacts.py` was switched to it. Query syntax
+changed from the old `countries_tags_en=australia` param to a Lucene-style
+`q=countries_tags:"en:australia"` string; response parsing moved from
+`payload["products"]` to `payload["hits"]`.
+
+A second, unrelated bug was found and fixed in the same session: `--max-pages`
+was compared against the raw page number instead of pages fetched *this run*,
+so resuming from any page past the configured `--max-pages` value (e.g. page
+11 with the workflow's default of 8) silently capped every run to exactly one
+page — 50 rows instead of hundreds. Both fixes are covered by regression
+tests in `tests/test_importers.py` (`test_iter_api_products_paginates_search_a_licious_hits`,
+`test_iter_api_products_max_pages_counts_pages_fetched_not_absolute_page_number`,
+`test_iter_api_products_stops_on_search_error_response`).
+
+An earlier hypothesis that Elasticsearch's default `max_result_window`
+(10,000 hits) would hard-stop pagination around page 200 turned out to be
+wrong — a real run cleared page 200 with no error. There is no known ceiling
+as of this update; the loop was told to keep going until hits genuinely come
+back empty or a real error occurs.
+
+If `/api/v2/search` or Search-a-licious changes behavior again, re-diagnose
+before assuming either the old fix or the old blocker still applies — this
+is external infrastructure this repo doesn't control.
+
 ### How to complete the imports
 
-The sandbox this was built in blocks outbound HTTPS to arbitrary domains
-(only a small allowlist of package-registry/dev-infra domains is reachable
-— `pypi.org`, `npmjs.org`, etc.). Both FSANZ (AUSNUT/NUTTAB) and
-OpenFoodFacts returned `403` or `401` on every connection attempt. **The import
-scripts themselves are ready and tested against fixtures** — they just need
-to run somewhere with real internet access (your own machine is fine).
-
-**Open Food Facts** (Australia-scoped, via live API):
+**Open Food Facts** (Australia-scoped, via the now-working Search-a-licious
+API — no API key, but do send a descriptive `--user-agent` per OFF's own
+request):
 ```bash
 python3 import_openfoodfacts.py --output seed_foods_off.sql
 ```
-Or from a local dump (more reproducible, avoids hammering their API):
+To resume the actual in-progress accumulation instead of starting over, pull
+`off_seed_cursor.txt` from `data/off-seed-import` first and pass it as
+`--start-page`. Or from a local bulk dump (a completely different, if much
+larger, path that doesn't touch the live API at all):
 ```bash
 # Download from https://world.openfoodfacts.org/data (the .jsonl.gz export)
 python3 import_openfoodfacts.py \
   --input openfoodfacts-products.jsonl.gz \
+  --output seed_foods_off.sql
+```
+Or stream a remote bulk export directly without downloading it to disk first
+(added alongside the endpoint fix, as a fallback path — decompresses on the
+fly, never buffers the full multi-GB file):
+```bash
+python3 import_openfoodfacts.py \
+  --input-url https://images.openfoodfacts.org/data/openfoodfacts-products.jsonl.gz \
   --output seed_foods_off.sql
 ```
 
