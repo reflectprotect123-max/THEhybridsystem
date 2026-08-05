@@ -201,6 +201,7 @@ def iter_api_products(
     session = requests.Session()
     headers = {"User-Agent": args.user_agent, "Accept": "application/json"}
     page = max(1, getattr(args, "start_page", 1))
+    pages_fetched = 0
     while True:
         params = {
             "q": AUSTRALIA_QUERY,
@@ -245,8 +246,13 @@ def iter_api_products(
             # been handed off - a later failure on the *next* page can't
             # retroactively make this one look incomplete.
             progress[0] = page
+        pages_fetched += 1
         page_count = payload.get("page_count")
-        if args.max_pages and page >= args.max_pages:
+        # max_pages counts pages fetched *this run*, not an absolute page
+        # number - comparing directly against `page` broke every resumed
+        # run once start_page passed max_pages (e.g. resuming at page 11
+        # with max_pages=8 would stop after a single page every time).
+        if args.max_pages and pages_fetched >= args.max_pages:
             break
         if isinstance(page_count, int) and page >= page_count:
             break

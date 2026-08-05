@@ -167,6 +167,38 @@ class ImporterTests(unittest.TestCase):
         self.assertEqual(first_call_params["langs"], "en")
         self.assertEqual(first_call_params["page"], 1)
 
+    def test_iter_api_products_max_pages_counts_pages_fetched_not_absolute_page_number(
+        self,
+    ) -> None:
+        # Regression test: resuming from start_page=11 with max_pages=2 must
+        # fetch two pages (11 and 12), not stop after page 11 alone because
+        # 11 >= 2. This exact scenario silently capped every resumed OFF
+        # import run to one page once the cursor passed the configured
+        # max_pages value.
+        page_eleven = {"hits": [{"code": "11"}], "page": 11, "page_size": 1, "page_count": 20}
+        page_twelve = {"hits": [{"code": "12"}], "page": 12, "page_size": 1, "page_count": 20}
+        fake_session = SimpleNamespace(
+            get=mock.Mock(
+                side_effect=[_FakeSearchResponse(page_eleven), _FakeSearchResponse(page_twelve)]
+            )
+        )
+        fake_requests = SimpleNamespace(Session=mock.Mock(return_value=fake_session))
+
+        args = SimpleNamespace(
+            api_url=import_openfoodfacts.API_URL,
+            page_size=1,
+            max_pages=2,
+            start_page=11,
+            sleep_seconds=0,
+            timeout=30.0,
+            user_agent="test-agent/1.0",
+        )
+        with mock.patch.object(import_openfoodfacts, "get_requests", return_value=fake_requests):
+            products = list(import_openfoodfacts.iter_api_products(args))
+
+        self.assertEqual([p["code"] for p in products], ["11", "12"])
+        self.assertEqual(fake_session.get.call_count, 2)
+
     def test_iter_api_products_stops_on_search_error_response(self) -> None:
         error_payload = {
             "debug": {"query": {}},
