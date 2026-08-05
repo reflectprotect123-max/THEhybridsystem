@@ -1,0 +1,98 @@
+name: Generate food seed SQL (bulk export)
+
+# Alternative to import-food-data.yml's live search-API crawl, which is
+# currently returning 401 Unauthorized from world.openfoodfacts.org on every
+# page (confirmed on a real GitHub-hosted runner, not a local network issue -
+# see off_seed_cursor.txt history on the data/off-seed-import branch). This
+# workflow instead streams OFF's static bulk export and reuses the same
+# Australia-filter/macro-extraction code via --input-url, never buffering the
+# full (multi-gigabyte) file to disk.
+#
+# The default dump_url below is OFF's long-documented full-export path. It has
+# not been independently verified reachable from this environment - run with
+# probe_only: true first to check reachability and Content-Length before
+# committing to a full run, which can take a long time for a multi-GB file.
+
+on:
+  workflow_dispatch:
+    inputs:
+      dump_url:
+        description: "OFF bulk export URL (.jsonl.gz)"
+        required: true
+        default: "https://static.openfoodfacts.org/data/openfoodfacts-products.jsonl.gz"
+      probe_only:
+        description: "true = only HEAD-check reachability/size, don't run the importer"
+        required: true
+        default: "true"
+
+permissions:
+  contents: write
+
+jobs:
+  probe:
+    name: Check bulk export reachability and size
+    if: inputs.probe_only == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: HEAD request
+        run: |
+          curl -sS -I --max-time 30 "${{ inputs.dump_url }}" | tee headers.txt
+          echo "---"
+          echo "If this returned 200 with a Content-Length, re-run with probe_only: false."
+
+  generate:
+    name: Stream OFF bulk export and filter to Australia
+    if: inputs.probe_only != 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 340
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install requests
+
+      - name: Run importer against the bulk export
+        id: import
+        run: |
+          python import_openfoodfacts.py \
+            --input-url "${{ inputs.dump_url }}" \
+            --output seed_foods_off_bulk.sql \
+            | tee import.log
+          rows_written="$(grep -o 'Rows written: [0-9]*' import.log | grep -o '[0-9]*$')"
+          echo "rows_written=${rows_written:-0}" >> "$GITHUB_OUTPUT"
+
+      - name: Summarize output
+        run: |
+          echo "Generated file size:"
+          ls -lh seed_foods_off_bulk.sql
+
+      - name: Upload seed SQL
+        if: steps.import.outputs.rows_written != '0'
+        uses: actions/upload-artifact@v4
+        with:
+          name: seed_foods_off_bulk
+          path: seed_foods_off_bulk.sql
+
+      - name: Push to the scratch branch
+        if: steps.import.outputs.rows_written != '0'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          if git ls-remote --exit-code --heads origin data/off-seed-import > /dev/null 2>&1; then
+            git fetch origin data/off-seed-import
+            git checkout -B data/off-seed-import origin/data/off-seed-import
+          else
+            git checkout --orphan data/off-seed-import
+            git reset --hard
+          fi
+
+          git add -f seed_foods_off_bulk.sql
+          git commit -m "Add OFF bulk-export batch (run ${{ github.run_id }})"
+          git push origin data/off-seed-import

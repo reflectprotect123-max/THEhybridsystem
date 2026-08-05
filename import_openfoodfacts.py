@@ -15,6 +15,8 @@ from __future__ import annotations
 
 import argparse
 import csv
+import gzip
+import io
 import json
 import sys
 import time
@@ -53,6 +55,15 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         help="Local OFF CSV/TSV, JSON, JSONL, or gzip-compressed export. Without it, use the API.",
     )
+    parser.add_argument(
+        "--input-url",
+        help=(
+            "Remote OFF bulk export (.jsonl or .jsonl.gz) to stream directly, e.g. the "
+            "world.openfoodfacts.org/data full export. Decompressed on the fly, never "
+            "written to disk in full. Ignored if --input is set; takes precedence over "
+            "the live search API."
+        ),
+    )
     parser.add_argument("--output", type=Path, default=Path("seed_foods_off.sql"))
     parser.add_argument("--api-url", default=API_URL)
     parser.add_argument("--page-size", type=int, default=100)
@@ -78,27 +89,32 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def iter_json_lines(handle: Iterable[str]) -> Iterator[Dict[str, Any]]:
+    """Parse one JSON value per line, e.g. an OFF .jsonl/.jsonl.gz export."""
+    for line_number, line in enumerate(handle, start=1):
+        text = line.strip()
+        if not text:
+            continue
+        try:
+            value = json.loads(text)
+        except json.JSONDecodeError:
+            yield {"__parse_error__": "line {}".format(line_number)}
+            continue
+        if isinstance(value, dict):
+            products = value.get("products")
+            if isinstance(products, list):
+                yield from (item for item in products if isinstance(item, dict))
+            else:
+                yield value
+        elif isinstance(value, list):
+            yield from (item for item in value if isinstance(item, dict))
+
+
 def iter_json_products(path: Path) -> Iterator[Dict[str, Any]]:
     lower = str(path).lower()
     if lower.endswith((".jsonl", ".ndjson", ".jsonl.gz", ".ndjson.gz")):
         with open_text(path) as handle:
-            for line_number, line in enumerate(handle, start=1):
-                text = line.strip()
-                if not text:
-                    continue
-                try:
-                    value = json.loads(text)
-                except json.JSONDecodeError:
-                    yield {"__parse_error__": "line {}".format(line_number)}
-                    continue
-                if isinstance(value, dict):
-                    products = value.get("products")
-                    if isinstance(products, list):
-                        yield from (item for item in products if isinstance(item, dict))
-                    else:
-                        yield value
-                elif isinstance(value, list):
-                    yield from (item for item in value if isinstance(item, dict))
+            yield from iter_json_lines(handle)
         return
 
     with open_text(path) as handle:
@@ -131,6 +147,23 @@ def get_requests():
     except ImportError as exc:  # pragma: no cover - only reached for API use
         raise RuntimeError("API mode needs requests; run python -m pip install requests") from exc
     return requests
+
+
+def iter_remote_jsonl_products(url: str, timeout: float, user_agent: str) -> Iterator[Dict[str, Any]]:
+    """Stream a remote OFF bulk export line by line, decompressing on the fly.
+
+    Never buffers the compressed or decompressed export to disk or fully in
+    memory - a multi-gigabyte world dump is read as a stream of lines, the
+    same as a local --input file, so Australia-filtering happens per line in
+    import_products() rather than after a full download.
+    """
+    requests = get_requests()
+    response = requests.get(url, stream=True, timeout=timeout, headers={"User-Agent": user_agent})
+    response.raise_for_status()
+    raw = response.raw
+    stream = gzip.GzipFile(fileobj=raw) if url.lower().endswith(".gz") else raw
+    handle = io.TextIOWrapper(stream, encoding="utf-8-sig")
+    yield from iter_json_lines(handle)
 
 
 def iter_api_products(
@@ -327,17 +360,22 @@ def make_row(product: Dict[str, Any]) -> Dict[str, Any]:
 
 def import_products(args: argparse.Namespace) -> Counter:
     last_completed_page = [getattr(args, "start_page", 1) - 1]
+    input_url = getattr(args, "input_url", None)
     if args.input:
         products = iter_local_products(args.input)
+    elif input_url:
+        products = iter_remote_jsonl_products(input_url, args.timeout, args.user_agent)
     else:
         products = iter_api_products(args, progress=last_completed_page)
     counters: Counter = Counter()
     seen_barcodes: set[str] = set()
     rows: List[Dict[str, Any]] = []
 
-    # Only the live API mode can fail mid-stream on a transient HTTP error; a
-    # local file either parses or it doesn't, so leave that path's exceptions
-    # to surface normally instead of masking a real bug in the input file.
+    # A local file either parses or it doesn't, so leave that path's
+    # exceptions to surface normally instead of masking a real bug in the
+    # input file. The live API and a remote --input-url stream can both fail
+    # mid-transfer on a transient HTTP error; write whatever was already
+    # fetched instead of discarding it.
     recoverable_errors: Tuple[type, ...] = ()
     if args.input is None:
         recoverable_errors = (get_requests().exceptions.RequestException,)
@@ -376,7 +414,7 @@ def import_products(args: argparse.Namespace) -> Counter:
 
     write_food_sql(rows, args.output, legacy_schema=args.legacy_schema)
     counters["skipped"] = counters["read"] - counters["written"]
-    if args.input is None:
+    if args.input is None and not input_url:
         counters["next_start_page"] = last_completed_page[0] + 1
     return counters
 

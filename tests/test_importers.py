@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import gzip
+import io
 import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from unittest import mock
 
 import import_ausnut
 import import_openfoodfacts
@@ -11,6 +14,23 @@ import import_openfoodfacts
 
 ROOT = Path(__file__).parent
 FIXTURES = ROOT / "fixtures"
+
+
+class _FakeStreamResponse:
+    """Minimal stand-in for requests.Response(stream=True) over a gzip body."""
+
+    def __init__(self, gzip_bytes: bytes) -> None:
+        self.raw = io.BytesIO(gzip_bytes)
+
+    def raise_for_status(self) -> None:
+        pass
+
+
+def _gzip_lines(text: str) -> bytes:
+    buffer = io.BytesIO()
+    with gzip.GzipFile(fileobj=buffer, mode="wb") as handle:
+        handle.write(text.encode("utf-8"))
+    return buffer.getvalue()
 
 
 class ImporterTests(unittest.TestCase):
@@ -37,6 +57,57 @@ class ImporterTests(unittest.TestCase):
             self.assertIn("'Acme', '930000000001', 40, 'g', 100", sql)
             # 40 kcal/100 ml × 250 ml = 100 kcal.
             self.assertIn("'Acme', '930000000002', 250, 'ml', 100", sql)
+
+    def test_iter_remote_jsonl_products_decompresses_gzip_stream(self) -> None:
+        fixture_text = (FIXTURES / "off.jsonl").read_text(encoding="utf-8")
+        gzip_bytes = _gzip_lines(fixture_text)
+        fake_response = _FakeStreamResponse(gzip_bytes)
+        fake_requests = SimpleNamespace(get=mock.Mock(return_value=fake_response))
+
+        with mock.patch.object(import_openfoodfacts, "get_requests", return_value=fake_requests):
+            products = list(
+                import_openfoodfacts.iter_remote_jsonl_products(
+                    "https://example.test/openfoodfacts-products.jsonl.gz",
+                    timeout=30.0,
+                    user_agent="test-agent/1.0",
+                )
+            )
+
+        self.assertEqual(len(products), 4)
+        self.assertEqual(products[0]["code"], "930000000001")
+        fake_requests.get.assert_called_once()
+        call_kwargs = fake_requests.get.call_args.kwargs
+        self.assertTrue(call_kwargs["stream"])
+        self.assertEqual(call_kwargs["headers"]["User-Agent"], "test-agent/1.0")
+
+    def test_import_products_streams_from_input_url(self) -> None:
+        fixture_text = (FIXTURES / "off.jsonl").read_text(encoding="utf-8")
+        gzip_bytes = _gzip_lines(fixture_text)
+        fake_response = _FakeStreamResponse(gzip_bytes)
+        fake_requests = SimpleNamespace(
+            get=mock.Mock(return_value=fake_response),
+            exceptions=SimpleNamespace(RequestException=Exception),
+        )
+
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "off_bulk.sql"
+            args = SimpleNamespace(
+                input=None,
+                input_url="https://example.test/openfoodfacts-products.jsonl.gz",
+                output=output,
+                keep_duplicate_barcodes=False,
+                legacy_schema=False,
+                timeout=30.0,
+                user_agent="test-agent/1.0",
+            )
+            with mock.patch.object(import_openfoodfacts, "get_requests", return_value=fake_requests):
+                counters = import_openfoodfacts.import_products(args)
+
+            self.assertEqual(counters["read"], 4)
+            self.assertEqual(counters["written"], 2)
+            self.assertNotIn("next_start_page", counters)
+            sql = output.read_text(encoding="utf-8")
+            self.assertIn("'Test Bar'", sql)
 
     def test_open_food_facts_legacy_output(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
