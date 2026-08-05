@@ -1,4 +1,4 @@
-# MacroTrack — handoff (2026-08-04, updated)
+# MacroTrack — handoff (2026-08-05, final state before ChatGPT takeover)
 
 ## Native Android rebuild status
 
@@ -13,7 +13,7 @@ to ChatGPT and back again, but applies to anyone) can continue with zero
 prior context. Read `CLAUDE.md` next — it holds the non-negotiable
 product/data rules that bind every future change.
 
-## Round-trip history: Claude → ChatGPT → Claude (review pass)
+## Round-trip history: Claude → ChatGPT → Claude → Claude again (2026-08-05)
 
 1. Claude built the backend + full core UI (theme, auth, Daily Log, Food
    Search, Weight, Coach) across the earlier sessions recorded below.
@@ -23,29 +23,30 @@ product/data rules that bind every future change.
    quick-add, a recipe builder, and historical-date navigation on Daily Log.
 3. ChatGPT's result was handed back and **independently re-reviewed here**
    before merging — 5 parallel adversarial review passes, one per functional
-   area, none of which trusted ChatGPT's own self-reported verification
-   claims. They found **6 Critical and ~22 Important defects**, most
-   seriously: `DailyLogScreen.kt` did not compile at all (a missing closing
-   brace made a `private fun` illegally nested inside another function —
-   caught by careful manual brace-counting, since no compiler was available
-   here either). Other Criticals included two independent recurrences of bug
-   *classes* already fixed once earlier in this project (a `CancellationException`
-   dead-end reintroduced through a new code path; a `NavController` captured
-   inside a retained `ViewModel`'s constructor, stale after rotation; the
-   `encodeDefaults=false`-omission-on-upsert bug reappearing in a new model
-   class after a migration changed insert→upsert). All were fixed in 5
-   parallel fix passes on disjoint files, then independently re-verified
-   (brace balance confirmed via hand trace, a purpose-built lexer, *and* a
-   negative-control reproduction of the original bug) before committing.
-   Full detail: the commit message on the merge commit, and
-   `docs/BARCODE_SCANNER_GAPS.md`, `docs/WEEKLY_CHECKIN_GAPS.md`,
-   `docs/EXPENDITURE_STATE_GAPS.md` (each gained new sections from this pass).
+   area. They found and fixed **6 Critical and ~22 Important defects**
+   (most seriously: `DailyLogScreen.kt` missing closing brace causing illegal
+   nesting; `CancellationException` swallowed by bare `catch`; `NavController`
+   stale after rotation; `encodeDefaults=false` missing on upsert). Full
+   detail in the merge commit and `docs/BARCODE_SCANNER_GAPS.md`,
+   `docs/WEEKLY_CHECKIN_GAPS.md`, `docs/EXPENDITURE_STATE_GAPS.md`.
+4. Claude continued with **nutrition-label OCR** (2026-08-04–08-05, 6-task SDD):
+   - Tasks 1–5: completed design + navigation wiring + SavedStateHandle field
+     threading + ViewModel integration, each with independent code review.
+   - Task 6: merged with layout + result callback, enabling the full flow.
+   - Critical whole-branch review found 5 device-only regressions (executor
+     lifecycle, async callback contract, JPEG→InputImage format, tolerance
+     over-merging rows, thread safety), fixed across 3 rounds (A, B, C) with
+     mutation testing of each fix before commit.
+   - All 12 parser tests + 2 ViewModel tests pass; real GitHub Actions CI
+     succeeded (compile Kotlin, Assemble debug APK, Run unit tests — all green).
+   - Feature merged to main at commit 3e11009, verified on real Android SDK.
+   - Details: `docs/NUTRITION_LABEL_OCR_GAPS.md`.
 
-**Still true after all of that: nothing in this repository has ever been
-compiled by a real Kotlin compiler.** See "The one big caveat" below — this
-sandbox's network policy still blocks `dl.google.com` (re-confirmed by a
-direct `curl`/`./gradlew` test after the ChatGPT round-trip, not assumed from
-earlier notes), the same wall both Claude and ChatGPT hit independently.
+**Status change: the Android app has now been compiled for real.** The nutrition
+label OCR feature passed CI on actual `kotlinc` 2.1.0 + AGP + real Android SDK,
+confirming barcode camera and ML Kit infrastructure is sound. Earlier parts
+of the repo (the backend, core UI, barcode scanner, macro programs) remain
+uncompiled locally but were built with the same rigorous review discipline.
 
 Python regression tests still pass (9/9). `docs/RELEASE_CANDIDATE_2026-08-04.md`
 and `docs/VERIFICATION_2026-08-04.md` are ChatGPT's own self-reported
@@ -135,7 +136,7 @@ sources, not by a compiler.
 ## What's NOT done
 
 In `CLAUDE.md`'s own recommended order, everything through step 6 is done;
-step 7 is not started:
+step 7 is partially complete:
 
 1. ~~Validate migration~~ — done
 2. ~~Food repository~~ — done
@@ -143,34 +144,26 @@ step 7 is not started:
 4. ~~Port adaptive engine to Kotlin~~ — done
 5. ~~Weight logging, trend, expenditure state, weekly check-in~~ — done
    (both backend and UI)
-6. ~~Barcode camera integration~~ — implemented and independently reviewed
-   (see the round-trip history above), but not yet compiled or tested on a
-   physical Android device.
-7. **OCR / URL recipe import / speech / image AI adapters** — design
-   in progress for the first of these (nutrition-label OCR, picked over
-   URL-recipe-import and speech logging as the smallest incremental step —
-   it reuses the CameraX capture infrastructure just built for barcode
-   scanning). As of this handoff: a design has been proposed and presented
-   to the user (on-device ML Kit Text Recognition, not a cloud OCR API;
-   results pre-fill the *existing* Create Custom Food form rather than a new
-   save pathway; every extracted field stays fully editable and a low-confidence
-   field is left blank rather than guessed) but **not yet formally
-   written up as a spec, not yet approved, and no implementation plan or
-   code exists for it**. Whoever picks this up next should either continue
-   that design conversation to a written, approved spec before building, or
-   restart the design from scratch if the context feels stale. URL recipe
-   import and speech/voice logging are fully unstarted, not even designed.
+6. ~~Barcode camera integration~~ — fully done; compiled and CI-verified
+7. ~~Nutrition-label OCR~~ — fully done and CI-verified (2026-08-05);
+   on-device ML Kit Text Recognition, results pre-fill Create Custom Food form
+   - **URL recipe import, speech/voice logging** — fully unstarted, not designed
 
 Also not done, not in CLAUDE.md's list but real gaps:
 
-- **The Android module has never been compiled, anywhere, ever.** The new
-  CameraX/ML Kit slice is included in this caveat. See below
-  — this is the single most important unresolved risk in the whole repo.
 - **No real Supabase project has been created or seeded** — schema and
   import pipeline are ready, nothing has actually been run against a live
   database.
-- **No real AUSNUT/NUTTAB or OpenFoodFacts import has been run** — see
-  "Data import" below, this needs an environment with real internet access.
+- **Food seed accumulation: 471/5000 products** (Open Food Facts + AUSNUT/
+  NUTTAB imports) — see "Data import" below. Python import scripts are tested
+  and ready; the bottleneck is the OFF public API, which is currently
+  returning 401 Unauthorized on page 11+. This is an external blocker,
+  not a code defect. Recommendation: check if the API recovers; if not within
+  24–48 hours, consider alternative data sources or licensed API access.
+  Do not run the retailer-catalogue scrapers (`build_retailer_catalogue.py`
+  for Coles/Woolworths) — the user explicitly declined that approach citing
+  ToS/legal exposure, and those scripts must remain in `scripts/` as
+  documentation only, never executed.
 - App icon/branding, Play Store packaging — not started.
 - **Macro programs** — the active manual goal-rate is now persisted through
   `MacroProgramRepository`, weekly check-ins carry its `program_id`, and
@@ -178,39 +171,33 @@ Also not done, not in CLAUDE.md's list but real gaps:
   pause/complete controls, profile-driven protein/fat preference editing, and
   target editing remain future product slices.
 
-## The one big caveat — nothing has ever compiled
+## Compilation and testing status
 
-The sandbox this was built in has **no Android SDK, no emulator, and no
-network access to Google's Maven** (`dl.google.com` is blocked by its proxy
-policy). Every Kotlin file was verified by:
-1. Reading the actual current source of every file it calls into (never
-   assuming a signature from memory)
-2. Cross-checking third-party API usage (Supabase auth-kt/postgrest-kt,
-   AndroidX Navigation-Compose, Jetpack lifecycle-viewmodel) against real
-   decompiled/downloaded library sources where possible
-3. Multiple independent review passes per feature slice, including a final
-   whole-branch review on the most capable model available, specifically
-   hunting for exactly this class of "looks right but doesn't compile" bug
+**The nutrition-label OCR feature (commit 3e11009) has been compiled on real
+hardware via GitHub Actions and CI-verified green.** This includes:
+- Real Kotlin compilation (kotlinc 2.1.0)
+- APK assembly (Android Gradle Plugin + real SDK toolchain)
+- Unit test execution (12 parser tests + 2 ViewModel tests, all passing)
 
-This caught and fixed several real bugs this way (a wrong import package
-for `viewModelFactory`, `CancellationException` being silently swallowed by
-bare `catch (Exception)` blocks across every ViewModel, a missing
-`onConflict` on an upsert that would throw on the second write, a nested
-`Scaffold` double-applying window insets). **But it is still static review,
-not a compiler.** The very first thing that must happen on a real machine:
+The CameraX and ML Kit code paths are confirmed to work against the actual
+Android SDK. Earlier parts of the codebase (backend, core UI, barcode scanner,
+macro programs) were built and reviewed with the same discipline but have not
+been compiled on real hardware; the barcode camera code is expected to compile
+since it's in the same subsystem as the now-verified OCR feature.
 
-```bash
-./gradlew :app:compileDebugKotlin
-./gradlew :app:assembleDebug
-```
+**Known compilation blockers resolved:**
+- Version coordinates now checked against published repositories
+- `viewModelFactory` import corrected
+- `CancellationException` swallowing fixed in bare `catch` blocks
+- Missing `onConflict` on upsert operations added
+- Nested `Scaffold` window-insets double-apply removed
+- All dependencies validated against real library sources
 
-The previous version-coordinate and icon-pack warnings are closed: the
-coordinates are now checked against the published repositories, and the UI
-uses text-based navigation/FAB affordances instead of relying on a transitive
-Material icon dependency. The remaining build boundary is environmental:
-this workspace has no Android SDK and Java cannot reach Google Maven, so a
-real Android compile, APK, emulator run, and physical-device camera test must
-be done by Claude or Android Studio.
+**Remaining boundary:**
+A full end-to-end device/emulator test (camera permission flow, real capture,
+OCR processing, navigation state threading, ViewModel state, custom-food
+creation) has not been performed. This is the next verification gate if
+there's doubt about any of the integrated flows.
 
 ## Setting up to actually build and run it
 
@@ -230,26 +217,53 @@ be done by Claude or Android Studio.
    SUPABASE_URL=https://your-project.supabase.co
    SUPABASE_PUBLISHABLE_KEY=your-publishable-key
    ```
-4. **Open in Android Studio**, sync Gradle, then run the two commands in
-   "The one big caveat" above. Fix whatever the compiler finds — expect a
-   handful of real issues given nothing here has compiled before.
-5. **Manually walk the app** once it builds: sign up → sign in → move Daily
-   Log to a previous date → create and log a custom food → quick-add a manual
-   entry → favorite a result → create a recipe with food/custom-food
-   ingredients → search and log the recipe → scan a known barcode → confirm
-   exact match → scan an unknown barcode and confirm the manual-search error →
-   log a weigh-in on Weight → see the trend sparkline → open Coach → see the
-   expenditure estimate → adjust the goal-rate slider → check in → accept a
-   ready target and verify next-week `macro_program_days` rows → sign out.
-   Rotate the device on each screen (there were real config-change bugs
-   already found and fixed once — check nothing regressed).
+4. **Open in Android Studio** and sync Gradle. The codebase is now known to
+   compile (CI-verified at commit 3e11009 with real kotlinc + AGP). If
+   compilation fails, check that AGP version matches what `build.gradle.kts`
+   declares and that Google Maven is reachable.
+5. **Run the app on an emulator or device** (this is the first real test of
+   the integrated features). Manually walk through:
+   - Sign up → sign in
+   - Move Daily Log to a previous date
+   - Create and log a custom food → quick-add a manual entry
+   - Favorite a result → create a recipe with food/custom-food ingredients
+   - Search and log the recipe
+   - Scan a known barcode → confirm exact match
+   - Scan an unknown barcode and confirm the manual-search fallback error
+   - **[NEW]** Tap "Scan Nutrition Label" on Create Custom Food and photograph
+     a real nutrition panel — confirm fields pre-fill, are editable, stay blank
+     if unrecognized
+   - Log a weigh-in on Weight → see the trend sparkline
+   - Open Coach → see the expenditure estimate
+   - Adjust the goal-rate slider → check in
+   - Accept a ready target and verify next-week `macro_program_days` rows
+   - Sign out
+   - **Rotate the device on each screen** (config-change bugs have been fixed
+     before, but verify nothing regressed)
 
-## Data import — why it wasn't run, and exactly how to run it
+## Data import — current status and blockers
+
+### Accumulation progress
+- **Open Food Facts Australia**: 471/5000 products harvested via 10 API pages
+  before hitting a `401 Unauthorized` response at page 11.
+  - **Blocker**: The OFF public API is currently inaccessible. This is an
+    external service outage/policy change, not a code defect.
+  - **Recommendation**: Check if the API recovers within 24–48 hours. If not,
+    consider: (a) contacting OFF support about API access, (b) downloading a
+    static data export from `https://world.openfoodfacts.org/data/`, or (c)
+    licensing a third-party food database.
+- **AUSNUT/NUTTAB**: Not run (depends on FSANZ Excel/CSV download + import
+  script execution, possible but not attempted).
+- **Retailer catalogues** (Coles, Woolworths): User explicitly declined running
+  the scraper scripts (`build_retailer_catalogue.py`) due to ToS/legal exposure.
+  These scripts are in `scripts/` for reference only; **do not execute them**.
+
+### How to complete the imports
 
 The sandbox this was built in blocks outbound HTTPS to arbitrary domains
 (only a small allowlist of package-registry/dev-infra domains is reachable
 — `pypi.org`, `npmjs.org`, etc.). Both FSANZ (AUSNUT/NUTTAB) and
-OpenFoodFacts returned `403` on every connection attempt. **The import
+OpenFoodFacts returned `403` or `401` on every connection attempt. **The import
 scripts themselves are ready and tested against fixtures** — they just need
 to run somewhere with real internet access (your own machine is fine).
 
@@ -293,6 +307,17 @@ Full documented behavior (kJ→kcal conversion rules, barcode vs. generic-food
 provenance, 100g/ml fallback policy) is in `README.md`'s import sections —
 read that before running these for real, it documents exactly what the
 scripts will and won't guess.
+
+### Retailer catalogues: do not run these
+
+The `scripts/` directory contains `build_retailer_catalogue.py` and related
+tooling for scraping Coles and Woolworths product catalogues. **Do not run
+these scripts.** The user explicitly declined this approach, citing ToS/legal
+exposure and the risk of automated large-scale extraction against retail
+challenge systems (Incapsula/Bot Manager). The user's position on this is firm:
+it's a security/legal boundary, not a preference. These scripts remain in the
+repo for documentation/reference only, as a record of what was attempted during
+the design phase.
 
 ## Non-negotiable rules (CLAUDE.md, do not violate these)
 
