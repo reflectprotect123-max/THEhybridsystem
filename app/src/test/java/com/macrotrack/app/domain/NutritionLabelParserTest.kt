@@ -153,6 +153,74 @@ class NutritionLabelParserTest {
     }
 
     @Test
+    fun leavesFatBlankRatherThanUsingTheSaturatedSubRowsValueWhenTheTotalRowsValueIsUnreadable() {
+        // Unlike doesNotConfuseSaturatedFatOrSugarsWithTheTotalRow above,
+        // this fixture makes the total row's own value unreadable, so the
+        // "saturated"-exclusion guard is the only thing standing between a
+        // correct blank (fail-safe) and silently reading the sub-row's value
+        // as if it were the total (CLAUDE.md rule #1: a wrong number is worse
+        // than a blank one). If the guard were ever removed, fatG would come
+        // back 6.1 here instead of null.
+        val lines = listOf(
+            OcrLine("Fat, total", left = 0, top = 160, right = 90, bottom = 180),
+            OcrLine("??", left = 200, top = 160, right = 250, bottom = 180),
+            OcrLine("Fat, saturated", left = 0, top = 190, right = 100, bottom = 210),
+            OcrLine("6.1g", left = 200, top = 190, right = 250, bottom = 210),
+        )
+
+        val result = NutritionLabelParser.parse(lines)
+
+        assertNull(result.fatG)
+    }
+
+    @Test
+    fun leavesCarbsBlankRatherThanUsingTheSugarsSubRowsValueWhenTheTotalRowsValueIsUnreadable() {
+        val lines = listOf(
+            OcrLine("Carbohydrate", left = 0, top = 220, right = 100, bottom = 240),
+            OcrLine("??", left = 200, top = 220, right = 260, bottom = 240),
+            OcrLine("Carbohydrate, sugars", left = 0, top = 250, right = 140, bottom = 270),
+            OcrLine("18.5g", left = 200, top = 250, right = 260, bottom = 270),
+        )
+
+        val result = NutritionLabelParser.parse(lines)
+
+        assertNull(result.carbsG)
+    }
+
+    @Test
+    fun stillGroupsMacroRowsCorrectlyWhenHalfTheRecognizedLinesAreMuchTaller() {
+        // A photo can pick up as much unrelated tall text (a title,
+        // ingredients list) as there are lines in the macro table itself.
+        // Estimating row spacing from a median/average line height can tip
+        // onto the tall lines once they're roughly half the total, widening
+        // the tolerance enough to chain-merge every macro row into one and
+        // read values from the wrong row entirely - anchoring on the
+        // *minimum* line height instead keeps row spacing tied to the
+        // table's own (smaller, tightly and consistently set) text
+        // regardless of how much larger unrelated text also appears.
+        val tallFillerLines = (0 until 8).map { i ->
+            OcrLine("Filler line $i", left = 0, top = i * 150, right = 300, bottom = i * 150 + 100)
+        }
+        val macroTableLines = listOf(
+            OcrLine("Energy", left = 0, top = 1300, right = 80, bottom = 1320),
+            OcrLine("124Cal", left = 200, top = 1300, right = 260, bottom = 1320),
+            OcrLine("Protein", left = 0, top = 1330, right = 80, bottom = 1350),
+            OcrLine("3.2g", left = 200, top = 1330, right = 250, bottom = 1350),
+            OcrLine("Fat, total", left = 0, top = 1360, right = 90, bottom = 1380),
+            OcrLine("2.1g", left = 200, top = 1360, right = 250, bottom = 1380),
+            OcrLine("Carbohydrate", left = 0, top = 1390, right = 100, bottom = 1410),
+            OcrLine("15.6g", left = 200, top = 1390, right = 260, bottom = 1410),
+        )
+
+        val result = NutritionLabelParser.parse(tallFillerLines + macroTableLines)
+
+        assertEquals(124.0, result.calories!!, 0.001)
+        assertEquals(3.2, result.proteinG!!, 0.001)
+        assertEquals(2.1, result.fatG!!, 0.001)
+        assertEquals(15.6, result.carbsG!!, 0.001)
+    }
+
+    @Test
     fun returnsAnEmptyResultWhenNothingRecognizableIsFound() {
         val lines = listOf(
             OcrLine("Ingredients: wheat flour, sugar, vegetable oil", left = 0, top = 300, right = 400, bottom = 320),

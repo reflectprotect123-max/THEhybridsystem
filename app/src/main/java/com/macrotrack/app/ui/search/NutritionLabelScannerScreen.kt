@@ -55,6 +55,7 @@ import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import com.macrotrack.app.domain.NutritionLabelParser
 import com.macrotrack.app.domain.OcrLine
 import com.macrotrack.app.domain.ParsedNutritionLabel
+import java.util.concurrent.Executors
 
 /**
  * Captures one still photo of a nutrition panel, runs on-device ML Kit Text
@@ -131,6 +132,11 @@ fun NutritionLabelScannerScreen(
     val textRecognizer = remember {
         TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
     }
+    // Decoding a full-resolution JPEG still (often 12-50 MP) is too heavy for
+    // the main thread - one background executor is owned for this screen's
+    // lifetime (not allocated per capture) and shut down alongside the
+    // camera below, so there's no per-capture thread leak and no ANR risk.
+    val captureExecutor = remember { Executors.newSingleThreadExecutor() }
 
     Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
         androidx.compose.ui.viewinterop.AndroidView(
@@ -174,6 +180,7 @@ fun NutritionLabelScannerScreen(
                 disposed = true
                 cameraProvider?.unbindAll()
                 textRecognizer.close()
+                captureExecutor.shutdown()
             }
         }
 
@@ -187,6 +194,7 @@ fun NutritionLabelScannerScreen(
                 showRetryPrompt = false
                 captureAndRecognize(
                     imageCapture = capture,
+                    captureExecutor = captureExecutor,
                     mainExecutor = ContextCompat.getMainExecutor(context),
                     textRecognizer = textRecognizer,
                     onLines = { lines ->
@@ -209,21 +217,24 @@ fun NutritionLabelScannerScreen(
     }
 }
 
+private const val MAX_DECODED_DIMENSION_PX = 2048
+
 private fun captureAndRecognize(
     imageCapture: ImageCapture,
+    captureExecutor: java.util.concurrent.Executor,
     mainExecutor: java.util.concurrent.Executor,
     textRecognizer: com.google.mlkit.vision.text.TextRecognizer,
     onLines: (List<OcrLine>) -> Unit,
     onError: () -> Unit,
 ) {
     // takePicture delivers onCaptureSuccess/onError asynchronously, some time
-    // after this call returns - a per-call executor would already be
-    // shut down by the time CameraX tries to dispatch to it, and its
-    // callback body here is lightweight (decode + hand off to ML Kit's own
-    // internal thread pool), so the already-available main executor is used
-    // directly rather than allocating a throwaway background thread.
+    // after this call returns, on whichever executor is passed here -
+    // captureExecutor is a single background thread owned by the composable
+    // for this screen's whole lifetime (see NutritionLabelScannerScreen),
+    // not allocated/shut down per capture, since the JPEG decode below is
+    // too heavy to run on the main thread.
     imageCapture.takePicture(
-        mainExecutor,
+        captureExecutor,
         object : ImageCapture.OnImageCapturedCallback() {
             override fun onCaptureSuccess(image: ImageProxy) {
                 try {
@@ -233,13 +244,22 @@ private fun captureAndRecognize(
                     // bytes into a Bitmap here also copies the pixel data out
                     // of the camera's buffer, so image.close() below discards
                     // the photo immediately - ML Kit never touches the
-                    // original ImageProxy.
+                    // original ImageProxy. The bounds-then-downsample pass
+                    // keeps a full-resolution sensor capture (commonly
+                    // 12-50 MP) from decoding into a many-hundred-megabyte
+                    // bitmap; ML Kit's text recognizer doesn't need more
+                    // than a couple thousand pixels on the long side to read
+                    // a nutrition panel.
                     val buffer = image.planes[0].buffer
                     val bytes = ByteArray(buffer.remaining())
                     buffer.get(bytes)
-                    val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                    BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+                    val sampleSize = calculateInSampleSize(bounds.outWidth, bounds.outHeight, MAX_DECODED_DIMENSION_PX)
+                    val decodeOptions = BitmapFactory.Options().apply { inSampleSize = sampleSize }
+                    val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, decodeOptions)
                     if (bitmap == null) {
-                        onError()
+                        mainExecutor.execute(onError)
                         return
                     }
                     val inputImage = InputImage.fromBitmap(bitmap, image.imageInfo.rotationDegrees)
@@ -254,17 +274,32 @@ private fun captureAndRecognize(
                         }
                         .addOnFailureListener(mainExecutor) { onError() }
                 } catch (e: Exception) {
-                    onError()
+                    mainExecutor.execute(onError)
+                } catch (e: OutOfMemoryError) {
+                    mainExecutor.execute(onError)
                 } finally {
                     image.close()
                 }
             }
 
             override fun onError(exception: ImageCaptureException) {
-                onError()
+                mainExecutor.execute(onError)
             }
         },
     )
+}
+
+/** Largest power-of-two downsample that still keeps both dimensions above [maxDimensionPx]. */
+private fun calculateInSampleSize(width: Int, height: Int, maxDimensionPx: Int): Int {
+    var sampleSize = 1
+    var w = width
+    var h = height
+    while (w / 2 >= maxDimensionPx || h / 2 >= maxDimensionPx) {
+        w /= 2
+        h /= 2
+        sampleSize *= 2
+    }
+    return sampleSize
 }
 
 @Composable

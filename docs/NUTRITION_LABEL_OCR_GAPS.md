@@ -39,10 +39,14 @@ device, so the following have not been verified here:
   still can produce;
 - OCR accuracy against real photographed Australian nutrition panels under
   ordinary shop/kitchen lighting, at realistic photo resolutions and angles;
-- the dynamic row-grouping tolerance (median line height x 0.5, floor 12px)
+- the dynamic row-grouping tolerance (minimum line height x 0.5, floor 12px)
   against real photo line-height variance - it replaced an earlier fixed
   12px constant that was only ever validated against synthetic test
   fixtures, not real OCR output;
+- the `MAX_DECODED_DIMENSION_PX = 2048` downsample target against real
+  photos - chosen as a reasonable bound for OCR legibility without ever
+  being measured against an actual ML Kit recognition-quality/resolution
+  tradeoff on a device;
 - camera permission behavior on Android 13+/14+ (shared code path with the
   barcode scanner, not re-verified separately here).
 
@@ -103,11 +107,8 @@ trace of the CameraX/ML Kit contract):
    still (often thousands of pixels tall) rather than a small preview frame,
    so a fixed pixel gap could plausibly split a label from its own value row
    on real photos even though it passed every synthetic test fixture. Fixed
-   by scaling the tolerance to the label's own median recognized-line height
-   (floor 12px, to avoid degenerate behavior on very few lines), keeping row
-   grouping resolution-independent. Re-verified against all 9 parser unit
-   tests (7 original + 2 added by this review) with a real `kotlinc` + JUnit
-   run in this sandbox - all pass.
+   in this round (see below) by scaling the tolerance to the label's own
+   line height, keeping row grouping resolution-independent.
 
 None of the four fixes above could be exercised against a real device,
 emulator, or compiled Gradle build in this sandbox - the same Android
@@ -118,6 +119,88 @@ Central, both reachable here); the CameraX/ML Kit fixes (#1-#3) were verified
 only by careful manual reading against the documented CameraX
 `ImageCapture.takePicture`/`ExecutorService.shutdown()` contract and the ML
 Kit `InputImage` accepted-format list, not by a real build or device.
+
+## Fixes applied 2026-08-05, round 2 (independent re-review of round 1)
+
+A second independent review, specifically re-verifying round 1's fixes above
+before merge, confirmed all four were genuinely fixed but found that fixing
+them had introduced two new device-only defects of the same kind - both
+also invisible to CI, and both caught only by careful reading rather than by
+a build:
+
+1. **Round 1's Critical-1 fix moved a full-resolution JPEG decode onto the
+   main thread.** Passing the main executor to `takePicture` (to solve the
+   premature-`shutdown()` bug) meant `onCaptureSuccess`'s JPEG decode - a
+   12-50 MP still, hundreds of milliseconds to seconds of work - now ran on
+   the UI thread: guaranteed jank, plausible ANR, plausible `OutOfMemoryError`
+   on common hardware. Fixed by restoring a *persistent* (not per-capture)
+   background executor: `captureExecutor` is created once via `remember` in
+   `NutritionLabelScannerScreen` (alongside `textRecognizer`) and shut down
+   in the same `onDispose` that unbinds the camera and closes the
+   recognizer - mirroring `BarcodeScannerScreen.kt`'s own executor lifecycle
+   exactly. This resolves the original Task 3 "leaked executor" finding
+   properly (one long-lived executor, disposed once) rather than by
+   eliminating background work altogether. `takePicture` is called with
+   `captureExecutor`; `onError()` calls inside `onCaptureSuccess` and the
+   sibling `onError(ImageCaptureException)` override are now dispatched via
+   `mainExecutor.execute(onError)` again, since that code runs on
+   `captureExecutor` (a background thread) and mutates Compose state, which
+   must happen on the main thread.
+2. **`catch (e: Exception)` does not catch `OutOfMemoryError`** (an `Error`,
+   not an `Exception`) - the single most likely throwable from decoding a
+   full-resolution still, and exactly the failure mode fix #1 above makes
+   more likely by keeping the decode on a background thread doing real work
+   under memory pressure. Fixed by adding a second `catch (e: OutOfMemoryError)`
+   clause alongside `catch (e: Exception)`, both routing to
+   `mainExecutor.execute(onError)` so the retry prompt still surfaces
+   instead of a silently stuck spinner. Also added a bounds-then-downsample
+   decode pass (`BitmapFactory.Options.inJustDecodeBounds` to read
+   dimensions, then `inSampleSize` to cap the decoded bitmap's long side at
+   `MAX_DECODED_DIMENSION_PX = 2048`) to reduce how often `OutOfMemoryError`
+   is hit in the first place, not just to catch it - ML Kit's text
+   recognizer doesn't need more than a couple thousand pixels on the long
+   side to read a nutrition panel's text.
+3. **The row-grouping tolerance fix from round 1 (median line height x 0.5)
+   can chain-merge separate macro rows into one wrong reading.** A photo can
+   pick up as much unrelated, much taller text (a title, an ingredients
+   list) as there are lines in the macro table itself; once roughly half the
+   recognized lines are tall outliers, a median-based estimate can tip onto
+   them and widen the tolerance enough to merge every macro row into a
+   single row, misreading a value from the wrong label entirely - a wrong
+   number, not a fail-safe blank (CLAUDE.md rule #1 territory). Demonstrated
+   and fixed in this round by switching from the median to the *minimum*
+   recognized line height as the tolerance basis: the macro table's own text
+   is normally the smallest, most tightly and consistently set text on the
+   panel, so anchoring on the minimum keeps row spacing tied to the table
+   regardless of how much larger unrelated text also appears in the frame.
+   Locked in with a new test
+   (`stillGroupsMacroRowsCorrectlyWhenHalfTheRecognizedLinesAreMuchTaller`)
+   that reproduces the exact half-tall-lines shape that broke the median
+   version; mutation-tested by hand (reverting to the median calculation
+   makes this specific test fail with a `NullPointerException` on
+   `result.calories!!`, confirming the test actually discriminates the two
+   implementations rather than passing either way).
+4. **One of round 1's new tests was vacuous.** The re-review found that
+   `doesNotConfuseCommaPhrasedSaturatedFatOrSugarsWithTheTotalRow` (and the
+   pre-existing dash-prefixed version) pass identically whether or not the
+   `"saturated"`/`"sugar"` exclusion guards exist at all, because the total
+   row's own value is always readable in those fixtures, so first-match-wins
+   ordering already produces the right answer with or without the guard.
+   Added two new tests instead
+   (`leavesFatBlankRatherThanUsingTheSaturatedSubRowsValueWhenTheTotalRowsValueIsUnreadable`
+   and the carbs/sugars equivalent) that make the total row's value
+   unreadable, so the guard is the only thing preventing the sub-row's value
+   from being misread as the total's - mutation-tested by hand (removing
+   both guards makes these two tests fail, returning `6.1`/`18.5` instead of
+   `null`, i.e. exactly the wrong-number failure mode the guards exist to
+   prevent).
+
+Re-verified against all 12 parser unit tests (9 from round 1 + 3 added by
+this round) with a real `kotlinc` + JUnit run in this sandbox - all pass,
+plus the three hand-run mutation checks above. As with round 1, the
+parser-only fixes were independently compiled and run for real; the
+CameraX/ML Kit executor and decode changes were verified only by careful
+manual reading, not by a real build or device.
 
 ## Known limitations carried forward (not fixed, tracked here instead)
 
@@ -147,8 +230,16 @@ follow-up rather than blocking this merge:
   invented and the user reviews/edits before saving - but a rough first
   impression worth trimming in a future UI-polish pass.
 
-Official references consulted (accessible via Maven Central/GitHub, not
-Google's docs site, which is network-blocked here):
+Both fix rounds' CameraX/ML Kit reasoning (executor dispatch timing, JPEG vs.
+YUV image formats, the `ExperimentalGetImage` opt-in boundary) was checked
+against prior knowledge of the CameraX `ImageCapture`/`ImageProxy` and ML Kit
+`InputImage` API contracts, not against a live fetch of Google's
+documentation site - `developer.android.com` and `developers.google.com` are
+both network-blocked in this sandbox, so no URL below was actually retrieved
+during this work. They're listed as the canonical source that should be used
+to confirm this reasoning once real internet/device access is available,
+per CLAUDE.md's evidence-discipline rule, not as evidence that was checked
+here:
 
-- [CameraX `ImageCapture` reference (via Maven Central artifact javadoc)](https://developer.android.com/reference/androidx/camera/core/ImageCapture)
+- [CameraX `ImageCapture` reference](https://developer.android.com/reference/androidx/camera/core/ImageCapture)
 - [ML Kit Text Recognition v2 for Android](https://developers.google.com/ml-kit/vision/text-recognition/v2/android)

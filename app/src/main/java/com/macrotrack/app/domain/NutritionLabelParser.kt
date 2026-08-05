@@ -99,14 +99,23 @@ object NutritionLabelParser {
      * A fixed pixel tolerance only makes sense at one photo resolution. This
      * screen captures a full-resolution still (often thousands of pixels
      * tall) rather than a small preview frame, so the tolerance is scaled to
-     * the label's own median line height instead - keeping row grouping
-     * correct regardless of the source photo's resolution.
+     * the label's own line height instead - keeping row grouping correct
+     * regardless of the source photo's resolution. The *minimum* line height
+     * is used rather than the median/average: a photo can pick up as much
+     * unrelated, much taller text (a title, ingredients list) as there are
+     * lines in the macro table itself, and a median/average is only safe
+     * while the table's own lines are a majority - once roughly half the
+     * recognized lines are taller outliers, a median-based tolerance can tip
+     * wide enough to chain-merge separate macro rows into one, misreading a
+     * value from the wrong row entirely. The table's own text is normally
+     * the smallest, most tightly and consistently set text on the panel, so
+     * anchoring on the minimum keeps the tolerance tied to the table
+     * regardless of how much larger unrelated text also appears.
      */
     private fun estimateRowTolerancePx(lines: List<OcrLine>): Double {
         if (lines.isEmpty()) return MIN_ROW_TOLERANCE_PX
-        val heights = lines.map { (it.bottom - it.top).toDouble() }.sorted()
-        val medianHeight = heights[heights.size / 2]
-        return maxOf(MIN_ROW_TOLERANCE_PX, medianHeight * 0.5)
+        val minHeight = lines.minOf { (it.bottom - it.top).toDouble() }
+        return maxOf(MIN_ROW_TOLERANCE_PX, minHeight * 0.5)
     }
 
     private fun verticalCenter(line: OcrLine): Double = (line.top + line.bottom) / 2.0
