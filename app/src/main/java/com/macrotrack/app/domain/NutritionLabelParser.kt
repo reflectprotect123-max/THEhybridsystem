@@ -76,7 +76,8 @@ object NutritionLabelParser {
         )
     }
 
-    private fun groupIntoRows(lines: List<OcrLine>, verticalTolerancePx: Int = 12): List<List<OcrLine>> {
+    private fun groupIntoRows(lines: List<OcrLine>): List<List<OcrLine>> {
+        val verticalTolerancePx = estimateRowTolerancePx(lines)
         val sorted = lines.sortedBy { verticalCenter(it) }
         val rows = mutableListOf<MutableList<OcrLine>>()
         for (line in sorted) {
@@ -90,6 +91,22 @@ object NutritionLabelParser {
             }
         }
         return rows.map { row -> row.sortedBy { it.left } }
+    }
+
+    private const val MIN_ROW_TOLERANCE_PX = 12.0
+
+    /**
+     * A fixed pixel tolerance only makes sense at one photo resolution. This
+     * screen captures a full-resolution still (often thousands of pixels
+     * tall) rather than a small preview frame, so the tolerance is scaled to
+     * the label's own median line height instead - keeping row grouping
+     * correct regardless of the source photo's resolution.
+     */
+    private fun estimateRowTolerancePx(lines: List<OcrLine>): Double {
+        if (lines.isEmpty()) return MIN_ROW_TOLERANCE_PX
+        val heights = lines.map { (it.bottom - it.top).toDouble() }.sorted()
+        val medianHeight = heights[heights.size / 2]
+        return maxOf(MIN_ROW_TOLERANCE_PX, medianHeight * 0.5)
     }
 
     private fun verticalCenter(line: OcrLine): Double = (line.top + line.bottom) / 2.0

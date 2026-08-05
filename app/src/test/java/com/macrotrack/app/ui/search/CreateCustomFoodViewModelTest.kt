@@ -55,4 +55,19 @@ class CreateCustomFoodViewModelTest {
         assertEquals("30.0", state.servingQty)
         assertEquals("g", state.servingUnit)
     }
+
+    @Test
+    fun leavesEveryFieldBlankWhenTheScannedLabelHasNoRecognizedValues() {
+        val viewModel = CreateCustomFoodViewModel(FakeCustomFoodRepository())
+
+        viewModel.onNutritionLabelScanned(ParsedNutritionLabel())
+
+        val state = viewModel.uiState.value
+        assertEquals("", state.calories)
+        assertEquals("", state.proteinG)
+        assertEquals("", state.carbsG)
+        assertEquals("", state.fatG)
+        assertEquals("", state.servingQty)
+        assertEquals("", state.servingUnit)
+    }
 }

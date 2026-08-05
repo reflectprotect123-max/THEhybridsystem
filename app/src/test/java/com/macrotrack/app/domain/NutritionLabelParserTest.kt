@@ -113,6 +113,46 @@ class NutritionLabelParserTest {
     }
 
     @Test
+    fun choosesThePerServingColumnOverAPer100gColumnWhenBothArePresent() {
+        // Standard FSANZ two-column panels list "per serving" before
+        // "per 100g" - this locks in that the leftmost value cell (per
+        // serving, the design's explicit choice over defaulting to 100g) is
+        // the one read, not whichever cell happens to be widest or last.
+        val lines = listOf(
+            OcrLine("Protein", left = 0, top = 100, right = 80, bottom = 120),
+            OcrLine("3.2g", left = 200, top = 100, right = 250, bottom = 120),
+            OcrLine("10.7g", left = 300, top = 100, right = 350, bottom = 120),
+        )
+
+        val result = NutritionLabelParser.parse(lines)
+
+        assertEquals(3.2, result.proteinG!!, 0.001)
+    }
+
+    @Test
+    fun doesNotConfuseCommaPhrasedSaturatedFatOrSugarsWithTheTotalRow() {
+        // Same guard as doesNotConfuseSaturatedFatOrSugarsWithTheTotalRow,
+        // but against the comma-phrased sub-row convention ("Fat, saturated")
+        // rather than a dash-prefixed one - a real AU label style the
+        // dash-only fixture doesn't exercise.
+        val lines = listOf(
+            OcrLine("Fat, total", left = 0, top = 160, right = 90, bottom = 180),
+            OcrLine("9.4g", left = 200, top = 160, right = 250, bottom = 180),
+            OcrLine("Fat, saturated", left = 0, top = 190, right = 100, bottom = 210),
+            OcrLine("6.1g", left = 200, top = 190, right = 250, bottom = 210),
+            OcrLine("Carbohydrate", left = 0, top = 220, right = 100, bottom = 240),
+            OcrLine("22.0g", left = 200, top = 220, right = 260, bottom = 240),
+            OcrLine("Carbohydrate, sugars", left = 0, top = 250, right = 140, bottom = 270),
+            OcrLine("18.5g", left = 200, top = 250, right = 260, bottom = 270),
+        )
+
+        val result = NutritionLabelParser.parse(lines)
+
+        assertEquals(9.4, result.fatG!!, 0.001)
+        assertEquals(22.0, result.carbsG!!, 0.001)
+    }
+
+    @Test
     fun returnsAnEmptyResultWhenNothingRecognizableIsFound() {
         val lines = listOf(
             OcrLine("Ingredients: wheat flour, sugar, vegetable oil", left = 0, top = 300, right = 400, bottom = 320),

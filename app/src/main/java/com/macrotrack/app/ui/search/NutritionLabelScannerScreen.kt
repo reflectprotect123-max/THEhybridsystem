@@ -4,6 +4,7 @@ import android.Manifest
 import android.app.Activity
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.BitmapFactory
 import android.net.Uri
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -54,7 +55,6 @@ import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import com.macrotrack.app.domain.NutritionLabelParser
 import com.macrotrack.app.domain.OcrLine
 import com.macrotrack.app.domain.ParsedNutritionLabel
-import java.util.concurrent.Executors
 
 /**
  * Captures one still photo of a nutrition panel, runs on-device ML Kit Text
@@ -187,7 +187,6 @@ fun NutritionLabelScannerScreen(
                 showRetryPrompt = false
                 captureAndRecognize(
                     imageCapture = capture,
-                    executor = Executors.newSingleThreadExecutor(),
                     mainExecutor = ContextCompat.getMainExecutor(context),
                     textRecognizer = textRecognizer,
                     onLines = { lines ->
@@ -212,43 +211,60 @@ fun NutritionLabelScannerScreen(
 
 private fun captureAndRecognize(
     imageCapture: ImageCapture,
-    executor: java.util.concurrent.Executor,
     mainExecutor: java.util.concurrent.Executor,
     textRecognizer: com.google.mlkit.vision.text.TextRecognizer,
     onLines: (List<OcrLine>) -> Unit,
     onError: () -> Unit,
 ) {
+    // takePicture delivers onCaptureSuccess/onError asynchronously, some time
+    // after this call returns - a per-call executor would already be
+    // shut down by the time CameraX tries to dispatch to it, and its
+    // callback body here is lightweight (decode + hand off to ML Kit's own
+    // internal thread pool), so the already-available main executor is used
+    // directly rather than allocating a throwaway background thread.
     imageCapture.takePicture(
-        executor,
+        mainExecutor,
         object : ImageCapture.OnImageCapturedCallback() {
-            @androidx.camera.core.ExperimentalGetImage
             override fun onCaptureSuccess(image: ImageProxy) {
-                val mediaImage = image.image
-                if (mediaImage == null) {
-                    image.close()
-                    mainExecutor.execute(onError)
-                    return
-                }
-                val inputImage = InputImage.fromMediaImage(mediaImage, image.imageInfo.rotationDegrees)
-                textRecognizer.process(inputImage)
-                    .addOnSuccessListener(mainExecutor) { text ->
-                        val lines = text.textBlocks.flatMap { it.lines }.mapNotNull { line ->
-                            line.boundingBox?.let { box ->
-                                OcrLine(line.text, box.left, box.top, box.right, box.bottom)
-                            }
-                        }
-                        onLines(lines)
+                try {
+                    // ImageCapture's in-memory callback delivers a JPEG-format
+                    // image, which InputImage.fromMediaImage() does not accept
+                    // (it requires NV21/YV12/YUV_420_888). Decoding the JPEG
+                    // bytes into a Bitmap here also copies the pixel data out
+                    // of the camera's buffer, so image.close() below discards
+                    // the photo immediately - ML Kit never touches the
+                    // original ImageProxy.
+                    val buffer = image.planes[0].buffer
+                    val bytes = ByteArray(buffer.remaining())
+                    buffer.get(bytes)
+                    val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                    if (bitmap == null) {
+                        onError()
+                        return
                     }
-                    .addOnFailureListener(mainExecutor) { onError() }
-                    .addOnCompleteListener(mainExecutor) { image.close() }
+                    val inputImage = InputImage.fromBitmap(bitmap, image.imageInfo.rotationDegrees)
+                    textRecognizer.process(inputImage)
+                        .addOnSuccessListener(mainExecutor) { text ->
+                            val lines = text.textBlocks.flatMap { it.lines }.mapNotNull { line ->
+                                line.boundingBox?.let { box ->
+                                    OcrLine(line.text, box.left, box.top, box.right, box.bottom)
+                                }
+                            }
+                            onLines(lines)
+                        }
+                        .addOnFailureListener(mainExecutor) { onError() }
+                } catch (e: Exception) {
+                    onError()
+                } finally {
+                    image.close()
+                }
             }
 
             override fun onError(exception: ImageCaptureException) {
-                mainExecutor.execute(onError)
+                onError()
             }
         },
     )
-    executor.shutdown()
 }
 
 @Composable

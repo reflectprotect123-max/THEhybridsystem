@@ -193,13 +193,14 @@ This repository now contains the backend/data foundation, deterministic
 decision logic, native Compose screens, historical-date logging, explicit daily
 status controls, owner-scoped log deletion, custom-food and quick-add logging,
 recipe creation, favorites, a persisted active macro goal, accepted check-in
-targets for the next program week, and an initial native camera barcode scanner. The
-following remain intentionally incomplete client/product work:
-nutrition-label OCR, URL recipe extraction, photo/voice AI logging, offline
+targets for the next program week, an initial native camera barcode scanner,
+and a native-camera nutrition-label OCR scanner (macros only, on the Create
+Custom Food screen). The following remain intentionally incomplete
+client/product work: URL recipe extraction, photo/voice AI logging, offline
 sync conflict resolution, notifications, billing, full macro-program history
-editing, and body-metrics/progress-photo screens. The scanner still needs a
-real Android build and physical-device verification; see
-`docs/BARCODE_SCANNER_GAPS.md`.
+editing, and body-metrics/progress-photo screens. Both camera scanners still
+need a real Android build and physical-device verification; see
+`docs/BARCODE_SCANNER_GAPS.md` and `docs/NUTRITION_LABEL_OCR_GAPS.md`.
 
 The public MacroFactor documentation describes deterministic intake/weight
 adaptation, weekly check-ins, barcode/search/recipe logging, micronutrients,
