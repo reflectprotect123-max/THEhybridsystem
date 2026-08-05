@@ -29,11 +29,24 @@ the field stays blank.
 ## Verification still required
 
 This workspace has no Android SDK, Gradle installation, emulator, or physical
-device, so the following have not been verified here:
+device, so the following have not been verified in this sandbox - however,
+after this branch was pushed, GitHub Actions' `Android build` workflow ran
+against it for real
+([run 30963505520](https://github.com/reflectprotect123-max/THEhybridsystem/actions/runs/30963505520),
+commit `6914bb6`) with a genuine Android SDK/Gradle toolchain, and its
+`Compile Kotlin`, `Assemble debug APK`, and `Run unit tests` steps all
+succeeded - so the first two items below are now closed, and are kept here
+only as a record of what this sandbox itself could not confirm:
 
-- Gradle resolution of `com.google.mlkit:text-recognition:16.0.1` (Google's
-  Maven is network-blocked in this sandbox);
-- compilation against the repository's Kotlin/Compose/AGP/CameraX versions;
+- ~~Gradle resolution of `com.google.mlkit:text-recognition:16.0.1`~~ -
+  confirmed by CI: resolves and compiles cleanly.
+- ~~compilation against the repository's Kotlin/Compose/AGP/CameraX
+  versions~~ - confirmed by CI: `Compile Kotlin` and `Assemble debug APK`
+  both succeeded, including the executor/`InputImage.fromBitmap`/downsample
+  changes from both fix rounds and `CreateCustomFoodViewModelTest`
+  (`androidx.lifecycle`-dependent, uncompileable in this sandbox) - the
+  whole app's `Run unit tests` step passed, including this feature's 12
+  parser tests and 2 `CreateCustomFoodViewModel` tests.
 - that `ImageProxy.planes[0].buffer` reliably contains a decodable JPEG for
   every device/OEM camera stack an `ImageCapture.OnImageCapturedCallback`
   still can produce;
