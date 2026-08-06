@@ -48,6 +48,7 @@ private class FakeCustomFoodRepository(
     ): CustomFood = TODO("not used in this test")
     override suspend fun delete(id: String): Unit = TODO("not used in this test")
     override suspend fun getById(id: String): CustomFood? = customFoods[id]
+    override suspend fun findByBarcode(barcode: String): CustomFood? = TODO("not used in this test")
 }
 
 private class FakeRecipeRepository(

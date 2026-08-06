@@ -12,6 +12,8 @@ interface CustomFoodRepository {
     suspend fun create(name: String, brand: String?, servingQty: Double, servingUnit: String, calories: Double, proteinG: Double, carbsG: Double, fatG: Double, barcode: String? = null): CustomFood
     suspend fun delete(id: String)
     suspend fun getById(id: String): CustomFood?
+    /** Exact match only, scoped to the current user's own custom foods. A blank barcode never matches. */
+    suspend fun findByBarcode(barcode: String): CustomFood?
 }
 
 class SupabaseCustomFoodRepository(private val client: SupabaseClient) : CustomFoodRepository {
@@ -75,6 +77,19 @@ class SupabaseCustomFoodRepository(private val client: SupabaseClient) : CustomF
     override suspend fun getById(id: String): CustomFood? {
         return client.postgrest.from("custom_foods").select {
             filter { eq("id", id) }
+            limit(1)
+        }.decodeSingleOrNull<CustomFood>()
+    }
+
+    override suspend fun findByBarcode(barcode: String): CustomFood? {
+        val exactBarcode = barcode.trim()
+        if (exactBarcode.isBlank()) return null
+        val userId = requireUserId()
+        return client.postgrest.from("custom_foods").select {
+            filter {
+                eq("user_id", userId)
+                eq("barcode", exactBarcode)
+            }
             limit(1)
         }.decodeSingleOrNull<CustomFood>()
     }

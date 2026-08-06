@@ -233,6 +233,11 @@ fun MacroTrackNavHost(appContainer: AppContainer) {
                             viewModel = foodSearchViewModel,
                             onScanBarcode = { navController.navigate(Destinations.BARCODE_SCANNER) },
                             onCreateCustomFood = { navController.navigate(Destinations.createCustomFoodRoute(logDate)) },
+                            onCreateCustomFoodForBarcode = { barcode ->
+                                navController.navigate(Destinations.createCustomFoodRoute(logDate))
+                                navController.currentBackStackEntry?.savedStateHandle
+                                    ?.set(Destinations.PENDING_BARCODE_FOR_CUSTOM_FOOD_KEY, barcode)
+                            },
                             onQuickAdd = { navController.navigate(Destinations.quickAddRoute(logDate)) },
                             onCreateRecipe = { navController.navigate(Destinations.recipeBuilderRoute(logDate)) },
                             onResultSelected = { entryKind, id ->
@@ -272,11 +277,19 @@ fun MacroTrackNavHost(appContainer: AppContainer) {
                         val logDate = LocalDate.parse(
                             createFoodBackStackEntry.arguments?.getString("logDate").orEmpty(),
                         )
+                        // Read once, synchronously, at construction time - this value (if any)
+                        // is set on this exact entry's SavedStateHandle by the caller
+                        // immediately after navigate() returns, before this composable's body
+                        // (and therefore this viewModel(factory=...) call) first runs. Not a
+                        // route argument: see the comment on PENDING_BARCODE_FOR_CUSTOM_FOOD_KEY.
+                        val initialBarcode = createFoodBackStackEntry.savedStateHandle
+                            .get<String>(Destinations.PENDING_BARCODE_FOR_CUSTOM_FOOD_KEY)
                         val createViewModel: CreateCustomFoodViewModel = viewModel(
                             factory = viewModelFactory {
                                 initializer {
                                     CreateCustomFoodViewModel(
                                         repository = appContainer.customFoodRepository,
+                                        initialBarcode = initialBarcode,
                                     )
                                 }
                             },
