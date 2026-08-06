@@ -43,6 +43,33 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
+
+    // Release signing reads from environment variables rather than
+    // local.properties/hardcoded values, so the keystore and its passwords
+    // never touch this repo - only the CI environment (via GitHub Actions
+    // secrets, see .github/workflows/android-release.yml) and whatever
+    // secret store the passwords are kept in outside of git. Unset in a
+    // plain local build; only android-release.yml's ./gradlew bundleRelease
+    // actually needs this, and nothing in the everyday debug build path
+    // (compileDebugKotlin/assembleDebug/testDebugUnitTest) touches it.
+    signingConfigs {
+        create("release") {
+            val keystorePath = System.getenv("MACROTRACK_KEYSTORE_PATH")
+            if (keystorePath != null) {
+                storeFile = file(keystorePath)
+                storePassword = System.getenv("MACROTRACK_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("MACROTRACK_KEY_ALIAS")
+                keyPassword = System.getenv("MACROTRACK_KEY_PASSWORD")
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("release")
+        }
+    }
 }
 
 dependencies {
