@@ -177,14 +177,37 @@ step 7 is partially complete:
 
 Also not done, not in CLAUDE.md's list but real gaps:
 
-- **No real Supabase project has been created or seeded** — schema and
-  import pipeline are ready, nothing has actually been run against a live
-  database.
-- **Food seed accumulation: 7,738 products, and this is the real ceiling of
-  this API path** (Open Food Facts, Australia-scoped). The earlier 401
-  blocker (stuck at 471/5000) is resolved via the Search-a-licious switch —
-  see "Data import" below — and an unattended batch loop then ran with no
-  target cap ("go for MAX" per explicit user request) until it hit a genuine
+- **A real Supabase project has now been seeded** — 7,691 Open Food Facts
+  (Australia-scoped) rows are live in `foods`, confirmed with
+  `SELECT COUNT(*) FROM foods WHERE source = 'openfoodfacts';` against the
+  actual database, not inferred from script output. 7,738 unique products
+  were found in total (see below for why that's the ceiling of this data
+  source); 47 were real cross-batch duplicate barcodes, correctly caught and
+  skipped by `ON CONFLICT (source, external_id) DO NOTHING`. **Loading this
+  data surfaced a real bug that's worth understanding before generating or
+  applying seed SQL again**: the first combined-SQL file wrapped each
+  ~500-row batch's *entire* set of INSERT statements in one transaction: a
+  single duplicate-barcode conflict aborted that whole transaction, silently
+  discarding every good row alongside it. Three of the largest batches
+  (nearly 7,000 rows) were wiped out this way on the first apply attempt
+  before it was caught, diagnosed from the actual `psql` error output
+  (`current transaction is aborted, commands ignored until end of
+  transaction block` cascading after one `duplicate key value violates
+  unique constraint "foods_source_external_id_uidx"`), and fixed by giving
+  every individual INSERT statement its own `BEGIN`/`COMMIT` plus
+  `ON CONFLICT (source, external_id) WHERE source IS NOT NULL AND
+  external_id IS NOT NULL DO NOTHING` (the `WHERE` clause is required
+  because `foods_source_external_id_uidx` is a **partial** unique index —
+  Postgres won't match a bare `ON CONFLICT (source, external_id)` against
+  it without repeating that exact predicate). If more seed SQL gets
+  generated/applied later, keep both of those: per-chunk transactions, and
+  the full `ON CONFLICT` clause with its `WHERE`, not just the column list.
+- **Food seed accumulation: 7,738 unique products found, this is the real
+  ceiling of this API path** (Open Food Facts, Australia-scoped; 7,691 of
+  them are now actually loaded, see above). The earlier 401 blocker (stuck
+  at 471/5000) is resolved via the Search-a-licious switch — see "Data
+  import" below — and an unattended batch loop then ran with no target cap
+  ("go for MAX" per explicit user request) until it hit a genuine
   `400 Bad Request` from `search.openfoodfacts.org` at page 201 (offset
   10,000). That's Elasticsearch's default `max_result_window`, and this
   API's GET `/search` exposes no `search_after`/cursor parameter to page
