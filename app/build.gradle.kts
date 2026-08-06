@@ -24,7 +24,12 @@ android {
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.macrotrack.app"
+        // Play Store package names are globally unique forever - com.macrotrack.app
+        // was already taken by an unrelated app. This is the Play Store identity
+        // only; the Kotlin package structure/namespace above intentionally stays
+        // com.macrotrack.app since that's just an internal implementation detail,
+        // not something Play Store's uniqueness constraint applies to.
+        applicationId = "com.hybridmacro.app"
         minSdk = 26
         targetSdk = 36
         versionCode = 1
