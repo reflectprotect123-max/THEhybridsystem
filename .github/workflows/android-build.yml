@@ -1,8 +1,32 @@
 name: Android build
 
+# Only auto-runs when something that actually affects the Android build
+# changed - app source, Gradle config/wrapper, or this workflow file itself.
+# Doc updates (HANDOFF.md), the Python seed importers, and other non-Android
+# changes no longer trigger a full compile+assemble+test cycle. Use
+# workflow_dispatch (or the Actions tab "Run workflow" button) to force a
+# build regardless of what changed.
 on:
   push:
+    paths:
+      - "app/**"
+      - "gradle/**"
+      - "gradlew"
+      - "gradlew.bat"
+      - "build.gradle.kts"
+      - "settings.gradle.kts"
+      - "gradle.properties"
+      - ".github/workflows/android-build.yml"
   pull_request:
+    paths:
+      - "app/**"
+      - "gradle/**"
+      - "gradlew"
+      - "gradlew.bat"
+      - "build.gradle.kts"
+      - "settings.gradle.kts"
+      - "gradle.properties"
+      - ".github/workflows/android-build.yml"
   workflow_dispatch:
 
 jobs:
