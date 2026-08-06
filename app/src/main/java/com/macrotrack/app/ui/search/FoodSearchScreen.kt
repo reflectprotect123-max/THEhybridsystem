@@ -30,6 +30,7 @@ fun FoodSearchScreen(
     onResultSelected: (entryKind: String, id: String) -> Unit,
     onScanBarcode: () -> Unit,
     onCreateCustomFood: () -> Unit,
+    onCreateCustomFoodForBarcode: (String) -> Unit,
     onQuickAdd: () -> Unit,
     onCreateRecipe: () -> Unit,
     logDate: LocalDate,
@@ -70,6 +71,14 @@ fun FoodSearchScreen(
 
         if (uiState.errorMessage != null) {
             Text(text = uiState.errorMessage.orEmpty(), color = MaterialTheme.colorScheme.error)
+        }
+        uiState.unmatchedBarcode?.let { unmatchedBarcode ->
+            Button(
+                onClick = { onCreateCustomFoodForBarcode(unmatchedBarcode) },
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text("Add $unmatchedBarcode as a custom food")
+            }
         }
 
         val listToShow = if (uiState.query.isBlank()) {

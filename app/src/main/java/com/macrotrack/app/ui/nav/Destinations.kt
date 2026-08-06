@@ -22,6 +22,11 @@ object Destinations {
     private const val ADD_LOG_ENTRY_BASE = "add_log_entry"
     const val FOOD_SEARCH_PATTERN = "$FOOD_SEARCH_BASE/{logDate}"
     const val CREATE_CUSTOM_FOOD_PATTERN = "$CREATE_CUSTOM_FOOD_BASE/{logDate}"
+    /** SavedStateHandle key: an unmatched barcode from Food Search, carried
+     * forward to pre-fill Create Custom Food. Not a route argument - see the
+     * comment on the CREATE_CUSTOM_FOOD_PATTERN composable in
+     * MacroTrackNavHost for why (popUpTo route-matching risk). */
+    const val PENDING_BARCODE_FOR_CUSTOM_FOOD_KEY = "pending_barcode_for_custom_food"
     private const val QUICK_ADD_BASE = "quick_add"
     const val QUICK_ADD_PATTERN = "$QUICK_ADD_BASE/{logDate}"
     private const val RECIPE_BUILDER_BASE = "create_recipe"

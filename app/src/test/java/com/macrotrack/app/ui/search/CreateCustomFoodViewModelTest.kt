@@ -27,6 +27,9 @@ private class FakeCustomFoodRepository : CustomFoodRepository {
 
     override suspend fun getById(id: String): CustomFood? =
         throw NotImplementedError("not exercised by this test")
+
+    override suspend fun findByBarcode(barcode: String): CustomFood? =
+        throw NotImplementedError("not exercised by this test")
 }
 
 class CreateCustomFoodViewModelTest {
@@ -54,6 +57,23 @@ class CreateCustomFoodViewModelTest {
         assertEquals("3.2", state.fatG)
         assertEquals("30.0", state.servingQty)
         assertEquals("g", state.servingUnit)
+    }
+
+    @Test
+    fun prefillsBarcodeFromAnUnmatchedScanButLeavesItFullyEditable() {
+        val viewModel = CreateCustomFoodViewModel(FakeCustomFoodRepository(), initialBarcode = "9310072021584")
+
+        assertEquals("9310072021584", viewModel.uiState.value.barcode)
+
+        viewModel.onBarcodeChanged("")
+        assertEquals("", viewModel.uiState.value.barcode)
+    }
+
+    @Test
+    fun startsWithABlankBarcodeWhenNoneWasScanned() {
+        val viewModel = CreateCustomFoodViewModel(FakeCustomFoodRepository())
+
+        assertEquals("", viewModel.uiState.value.barcode)
     }
 
     @Test

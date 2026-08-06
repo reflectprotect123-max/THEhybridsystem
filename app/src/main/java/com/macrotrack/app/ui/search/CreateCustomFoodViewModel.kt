@@ -13,6 +13,10 @@ import kotlinx.coroutines.launch
 data class CreateCustomFoodUiState(
     val name: String = "",
     val brand: String = "",
+    /** Optional. Set from an unmatched barcode scan so a future scan of the
+     * same code finds this food (see FoodSearchViewModel.onBarcodeDetected),
+     * but always user-editable/clearable - never enforced as required. */
+    val barcode: String = "",
     /**
      * Serving quantity/unit start blank on purpose. They are part of the
      * nutrition denominator, so pre-filling a submittable "100"/"g" would let
@@ -34,13 +38,15 @@ data class CreateCustomFoodUiState(
 
 class CreateCustomFoodViewModel(
     private val repository: CustomFoodRepository,
+    initialBarcode: String? = null,
 ) : ViewModel() {
 
-    private val _uiState = MutableStateFlow(CreateCustomFoodUiState())
+    private val _uiState = MutableStateFlow(CreateCustomFoodUiState(barcode = initialBarcode.orEmpty()))
     val uiState: StateFlow<CreateCustomFoodUiState> = _uiState.asStateFlow()
 
     fun onNameChanged(value: String) = update { copy(name = value, errorMessage = null) }
     fun onBrandChanged(value: String) = update { copy(brand = value, errorMessage = null) }
+    fun onBarcodeChanged(value: String) = update { copy(barcode = value, errorMessage = null) }
     fun onServingQtyChanged(value: String) = update { copy(servingQty = value, errorMessage = null) }
     fun onServingUnitChanged(value: String) = update { copy(servingUnit = value, errorMessage = null) }
     fun onCaloriesChanged(value: String) = update { copy(calories = value, errorMessage = null) }
@@ -89,6 +95,7 @@ class CreateCustomFoodViewModel(
                     proteinG = proteinValue,
                     carbsG = carbsValue,
                     fatG = fatValue,
+                    barcode = state.barcode.trim().ifBlank { null },
                 )
                 _uiState.value = _uiState.value.copy(
                     isSaving = false,

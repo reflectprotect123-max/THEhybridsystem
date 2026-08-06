@@ -27,6 +27,10 @@ data class FoodSearchUiState(
     val favoriteChangingKeys: Set<String> = emptySet(),
     val errorMessage: String? = null,
     val barcodeResult: FoodSearchResult? = null,
+    /** Set only when a scanned barcode matched neither `foods` nor the user's own
+     * custom foods, so the UI can offer creating a custom food from it instead
+     * of a dead end. Cleared as soon as a new search/scan starts. */
+    val unmatchedBarcode: String? = null,
 )
 
 class FoodSearchViewModel(
@@ -115,7 +119,7 @@ class FoodSearchViewModel(
     }
 
     fun onQueryChanged(query: String) {
-        _uiState.value = _uiState.value.copy(query = query)
+        _uiState.value = _uiState.value.copy(query = query, unmatchedBarcode = null)
         searchJob?.cancel()
         val cleanQuery = query.trim()
         if (cleanQuery.isBlank()) {
@@ -149,6 +153,12 @@ class FoodSearchViewModel(
      * The scanned value is trimmed only for transport whitespace. It is not
      * padded, converted between UPC/EAN forms, or otherwise rewritten: an
      * exact miss must remain an exact miss rather than a guessed match.
+     *
+     * Checks `foods` first, then the user's own custom foods (a barcode saved
+     * on a previously created custom food - see `onNutritionLabelScanned`'s
+     * sibling flow in CreateCustomFoodViewModel) before finally reporting a
+     * true miss, so a food added once via label OCR is found on every later
+     * scan instead of only ever being reachable by manual search.
      */
     fun onBarcodeDetected(barcode: String) {
         val exactBarcode = barcode.trim()
@@ -159,17 +169,13 @@ class FoodSearchViewModel(
             isLoading = true,
             errorMessage = null,
             barcodeResult = null,
+            unmatchedBarcode = null,
         )
         searchJob = viewModelScope.launch {
             try {
                 val food = foodRepository.findByBarcode(exactBarcode)
-                _uiState.value = if (food == null) {
-                    _uiState.value.copy(
-                        isLoading = false,
-                        errorMessage = "No food found for barcode $exactBarcode. Search manually instead.",
-                    )
-                } else {
-                    _uiState.value.copy(
+                if (food != null) {
+                    _uiState.value = _uiState.value.copy(
                         isLoading = false,
                         barcodeResult = FoodSearchResult(
                             entryKind = EntryKind.FOOD,
@@ -177,6 +183,25 @@ class FoodSearchViewModel(
                             title = food.name,
                             subtitle = food.brand,
                         ),
+                    )
+                    return@launch
+                }
+                val customFood = customFoodRepository.findByBarcode(exactBarcode)
+                _uiState.value = if (customFood != null) {
+                    _uiState.value.copy(
+                        isLoading = false,
+                        barcodeResult = FoodSearchResult(
+                            entryKind = EntryKind.CUSTOM_FOOD,
+                            id = customFood.id,
+                            title = customFood.name,
+                            subtitle = customFood.brand,
+                        ),
+                    )
+                } else {
+                    _uiState.value.copy(
+                        isLoading = false,
+                        errorMessage = "No food found for barcode $exactBarcode. Search manually, or add it as a custom food.",
+                        unmatchedBarcode = exactBarcode,
                     )
                 }
             } catch (e: CancellationException) {

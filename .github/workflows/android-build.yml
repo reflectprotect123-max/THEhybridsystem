@@ -1,8 +1,32 @@
 name: Android build
 
+# Only auto-runs when something that actually affects the Android build
+# changed - app source, Gradle config/wrapper, or this workflow file itself.
+# Doc updates (HANDOFF.md), the Python seed importers, and other non-Android
+# changes no longer trigger a full compile+assemble+test cycle. Use
+# workflow_dispatch (or the Actions tab "Run workflow" button) to force a
+# build regardless of what changed.
 on:
   push:
+    paths:
+      - "app/**"
+      - "gradle/**"
+      - "gradlew"
+      - "gradlew.bat"
+      - "build.gradle.kts"
+      - "settings.gradle.kts"
+      - "gradle.properties"
+      - ".github/workflows/android-build.yml"
   pull_request:
+    paths:
+      - "app/**"
+      - "gradle/**"
+      - "gradlew"
+      - "gradlew.bat"
+      - "build.gradle.kts"
+      - "settings.gradle.kts"
+      - "gradle.properties"
+      - ".github/workflows/android-build.yml"
   workflow_dispatch:
 
 jobs:
@@ -63,6 +87,25 @@ jobs:
         with:
           name: app-debug
           path: app/build/outputs/apk/debug/*.apk
+
+      # Pushes the same debug APK to Firebase App Distribution so it reaches
+      # a tester's phone as a one-tap install notification instead of a
+      # manual GitHub artifact download. Requires two repo secrets that must
+      # be created by hand (Firebase project + service account setup can't
+      # be done from CI): FIREBASE_APP_ID and FIREBASE_SERVICE_CREDENTIALS.
+      # Skips quietly (via the if-secret-exists guard on FIREBASE_APP_ID) so
+      # forks/PRs without those secrets configured don't fail the build.
+      - name: Upload to Firebase App Distribution
+        if: success() && env.FIREBASE_APP_ID != ''
+        env:
+          FIREBASE_APP_ID: ${{ secrets.FIREBASE_APP_ID }}
+        uses: wzieba/Firebase-Distribution-Github-Action@v1
+        with:
+          appId: ${{ secrets.FIREBASE_APP_ID }}
+          serviceCredentialsFileContent: ${{ secrets.FIREBASE_SERVICE_CREDENTIALS }}
+          testers: reflectprotect123@gmail.com
+          releaseNotes: ${{ github.event.head_commit.message }}
+          file: app/build/outputs/apk/debug/app-debug.apk
 
       - name: Upload test reports
         if: always()

@@ -60,6 +60,16 @@ fun CreateCustomFoodScreen(
             )
         }
         item {
+            OutlinedTextField(
+                value = state.barcode,
+                onValueChange = viewModel::onBarcodeChanged,
+                label = { Text("Barcode (optional)") },
+                placeholder = { Text("Scan a product to fill this in automatically") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+            )
+        }
+        item {
             // Hint-only placeholder, never a pre-filled value: the serving
             // denominator has to come from the user, not from MacroTrack.
             OutlinedTextField(

@@ -1,10 +1,21 @@
 #!/usr/bin/env python3
 """Create PostgreSQL seed INSERTs from Open Food Facts Australian products.
 
-The importer supports the Open Food Facts v2 search API and local JSON/JSONL
-or CSV/TSV exports.  It keeps products tagged for Australia, requires a
-barcode, product name, and the four macro values, and never invents a density
-for a serving whose unit cannot be reconciled with the source denominator.
+The importer supports the Open Food Facts Search-a-licious API
+(search.openfoodfacts.org) and local JSON/JSONL or CSV/TSV exports.  It keeps
+products tagged for Australia, requires a barcode, product name, and the four
+macro values, and never invents a density for a serving whose unit cannot be
+reconciled with the source denominator.
+
+The legacy ``/api/v2/search`` endpoint (world.openfoodfacts.org) started
+returning a persistent 401 on every page in August 2026, confirmed from three
+independent networks (a sandboxed CI-style environment, a GitHub Actions
+runner, and a residential connection) - not an IP-reputation block, and not
+something an API key fixes (the endpoint requires none). Search-a-licious is
+Open Food Facts' own recommended replacement for structured search and was
+verified working (real Australian products, real nutriments) before this
+importer was switched to it. ``--api-url`` can still override this if the
+legacy endpoint ever recovers or another mirror is preferred.
 
 The default output targets the enhanced ``foods`` table in
 ``supabase/migrations/001_macro_foundation.sql``.  ``--legacy-schema`` keeps
@@ -15,6 +26,8 @@ from __future__ import annotations
 
 import argparse
 import csv
+import gzip
+import io
 import json
 import sys
 import time
@@ -39,7 +52,8 @@ from seed_common import (
 )
 
 
-API_URL = "https://world.openfoodfacts.org/api/v2/search"
+API_URL = "https://search.openfoodfacts.org/search"
+AUSTRALIA_QUERY = 'countries_tags:"en:australia"'
 SOURCE_NAME = "openfoodfacts"
 REQUIRED_KEYS = ("protein", "carbs", "fat")
 
@@ -52,6 +66,15 @@ def parse_args() -> argparse.Namespace:
         "--input",
         type=Path,
         help="Local OFF CSV/TSV, JSON, JSONL, or gzip-compressed export. Without it, use the API.",
+    )
+    parser.add_argument(
+        "--input-url",
+        help=(
+            "Remote OFF bulk export (.jsonl or .jsonl.gz) to stream directly, e.g. the "
+            "world.openfoodfacts.org/data full export. Decompressed on the fly, never "
+            "written to disk in full. Ignored if --input is set; takes precedence over "
+            "the live search API."
+        ),
     )
     parser.add_argument("--output", type=Path, default=Path("seed_foods_off.sql"))
     parser.add_argument("--api-url", default=API_URL)
@@ -78,27 +101,32 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def iter_json_lines(handle: Iterable[str]) -> Iterator[Dict[str, Any]]:
+    """Parse one JSON value per line, e.g. an OFF .jsonl/.jsonl.gz export."""
+    for line_number, line in enumerate(handle, start=1):
+        text = line.strip()
+        if not text:
+            continue
+        try:
+            value = json.loads(text)
+        except json.JSONDecodeError:
+            yield {"__parse_error__": "line {}".format(line_number)}
+            continue
+        if isinstance(value, dict):
+            products = value.get("products")
+            if isinstance(products, list):
+                yield from (item for item in products if isinstance(item, dict))
+            else:
+                yield value
+        elif isinstance(value, list):
+            yield from (item for item in value if isinstance(item, dict))
+
+
 def iter_json_products(path: Path) -> Iterator[Dict[str, Any]]:
     lower = str(path).lower()
     if lower.endswith((".jsonl", ".ndjson", ".jsonl.gz", ".ndjson.gz")):
         with open_text(path) as handle:
-            for line_number, line in enumerate(handle, start=1):
-                text = line.strip()
-                if not text:
-                    continue
-                try:
-                    value = json.loads(text)
-                except json.JSONDecodeError:
-                    yield {"__parse_error__": "line {}".format(line_number)}
-                    continue
-                if isinstance(value, dict):
-                    products = value.get("products")
-                    if isinstance(products, list):
-                        yield from (item for item in products if isinstance(item, dict))
-                    else:
-                        yield value
-                elif isinstance(value, list):
-                    yield from (item for item in value if isinstance(item, dict))
+            yield from iter_json_lines(handle)
         return
 
     with open_text(path) as handle:
@@ -133,6 +161,23 @@ def get_requests():
     return requests
 
 
+def iter_remote_jsonl_products(url: str, timeout: float, user_agent: str) -> Iterator[Dict[str, Any]]:
+    """Stream a remote OFF bulk export line by line, decompressing on the fly.
+
+    Never buffers the compressed or decompressed export to disk or fully in
+    memory - a multi-gigabyte world dump is read as a stream of lines, the
+    same as a local --input file, so Australia-filtering happens per line in
+    import_products() rather than after a full download.
+    """
+    requests = get_requests()
+    response = requests.get(url, stream=True, timeout=timeout, headers={"User-Agent": user_agent})
+    response.raise_for_status()
+    raw = response.raw
+    stream = gzip.GzipFile(fileobj=raw) if url.lower().endswith(".gz") else raw
+    handle = io.TextIOWrapper(stream, encoding="utf-8-sig")
+    yield from iter_json_lines(handle)
+
+
 def iter_api_products(
     args: argparse.Namespace, progress: Optional[List[int]] = None
 ) -> Iterator[Dict[str, Any]]:
@@ -146,7 +191,6 @@ def iter_api_products(
         "serving_size",
         "nutrition_data_per",
         "countries_tags",
-        "countries_tags_en",
         "nutriments",
         "ingredients_text",
         "allergens_tags",
@@ -157,9 +201,11 @@ def iter_api_products(
     session = requests.Session()
     headers = {"User-Agent": args.user_agent, "Accept": "application/json"}
     page = max(1, getattr(args, "start_page", 1))
+    pages_fetched = 0
     while True:
         params = {
-            "countries_tags_en": "australia",
+            "q": AUSTRALIA_QUERY,
+            "langs": "en",
             "fields": ",".join(fields),
             "page": page,
             "page_size": page_size,
@@ -178,7 +224,19 @@ def iter_api_products(
         assert response is not None
         response.raise_for_status()
         payload = response.json()
-        products = payload.get("products", [])
+        if "errors" in payload:
+            # Search-a-licious reports query-level problems as a 200 response
+            # with an "errors" list (ErrorSearchResponse) instead of an HTTP
+            # error status. Surface it rather than silently treating it as
+            # "no more products" - that would hide a real broken query.
+            print(
+                "WARNING: search API returned errors instead of results: {}".format(
+                    payload["errors"]
+                ),
+                file=sys.stderr,
+            )
+            break
+        products = payload.get("hits", [])
         if not isinstance(products, list) or not products:
             break
         yield from (item for item in products if isinstance(item, dict))
@@ -188,8 +246,13 @@ def iter_api_products(
             # been handed off - a later failure on the *next* page can't
             # retroactively make this one look incomplete.
             progress[0] = page
+        pages_fetched += 1
         page_count = payload.get("page_count")
-        if args.max_pages and page >= args.max_pages:
+        # max_pages counts pages fetched *this run*, not an absolute page
+        # number - comparing directly against `page` broke every resumed
+        # run once start_page passed max_pages (e.g. resuming at page 11
+        # with max_pages=8 would stop after a single page every time).
+        if args.max_pages and pages_fetched >= args.max_pages:
             break
         if isinstance(page_count, int) and page >= page_count:
             break
@@ -327,17 +390,22 @@ def make_row(product: Dict[str, Any]) -> Dict[str, Any]:
 
 def import_products(args: argparse.Namespace) -> Counter:
     last_completed_page = [getattr(args, "start_page", 1) - 1]
+    input_url = getattr(args, "input_url", None)
     if args.input:
         products = iter_local_products(args.input)
+    elif input_url:
+        products = iter_remote_jsonl_products(input_url, args.timeout, args.user_agent)
     else:
         products = iter_api_products(args, progress=last_completed_page)
     counters: Counter = Counter()
     seen_barcodes: set[str] = set()
     rows: List[Dict[str, Any]] = []
 
-    # Only the live API mode can fail mid-stream on a transient HTTP error; a
-    # local file either parses or it doesn't, so leave that path's exceptions
-    # to surface normally instead of masking a real bug in the input file.
+    # A local file either parses or it doesn't, so leave that path's
+    # exceptions to surface normally instead of masking a real bug in the
+    # input file. The live API and a remote --input-url stream can both fail
+    # mid-transfer on a transient HTTP error; write whatever was already
+    # fetched instead of discarding it.
     recoverable_errors: Tuple[type, ...] = ()
     if args.input is None:
         recoverable_errors = (get_requests().exceptions.RequestException,)
@@ -376,7 +444,7 @@ def import_products(args: argparse.Namespace) -> Counter:
 
     write_food_sql(rows, args.output, legacy_schema=args.legacy_schema)
     counters["skipped"] = counters["read"] - counters["written"]
-    if args.input is None:
+    if args.input is None and not input_url:
         counters["next_start_page"] = last_completed_page[0] + 1
     return counters
 
