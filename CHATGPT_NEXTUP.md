@@ -1,4 +1,4 @@
-# MacroTrack — Quick handoff for ChatGPT (2026-08-05)
+# Macro+ — Quick handoff for ChatGPT (2026-08-05)
 
 ## TL;DR — what happened
 
@@ -67,8 +67,8 @@ The user asked for TEXT ONLY output and explicitly requested a handoff to ChatGP
 | `HANDOFF.md` | Full architecture + boundary details |
 | `README.md` | Setup, import commands, feature overview |
 | `adaptive_engine.py` | Python reference for macro-targeting logic (ported to Kotlin) |
-| `app/src/main/java/com/macrotrack/app/ui/search/NutritionLabelScannerScreen.kt` | Camera + OCR capture |
-| `app/src/main/java/com/macrotrack/app/domain/NutritionLabelParser.kt` | OCR result → domain model (with sub-row exclusion guards) |
+| `app/src/main/java/com/macroplus/app/ui/search/NutritionLabelScannerScreen.kt` | Camera + OCR capture |
+| `app/src/main/java/com/macroplus/app/domain/NutritionLabelParser.kt` | OCR result → domain model (with sub-row exclusion guards) |
 | `docs/NUTRITION_LABEL_OCR_GAPS.md` | What OCR *doesn't* do (units, merged lines, etc.) — read before shipping new features |
 | `docs/ADAPTIVE_ENGINE_CONTRACT.md` | What adaptive logic boundary covers vs. doesn't (for macro targeting decisions) |
 | `supabase/migrations/` | All 5 schema migrations — run in order |

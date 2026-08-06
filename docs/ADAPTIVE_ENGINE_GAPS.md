@@ -7,7 +7,7 @@ filling them with plausible numbers"). From the final whole-branch review of
 `docs/superpowers/plans/2026-08-03-adaptive-engine-kotlin-port.md` (branch
 `claude/macro-factor-app-dev-6twv5o`).
 
-The Kotlin port (`app/src/main/java/com/macrotrack/app/domain/{AdaptiveEngine,
+The Kotlin port (`app/src/main/java/com/macroplus/app/domain/{AdaptiveEngine,
 MacroTargeting,WeeklyCheckIn,AdaptiveEngineModels}.kt`) is a verified-faithful
 mirror of `adaptive_engine.py` — the final review diffed ~450,000 randomized
 inputs against the live Python reference and found zero behavioral

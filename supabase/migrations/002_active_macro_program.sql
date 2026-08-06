@@ -1,4 +1,4 @@
--- MacroTrack: one active goal per user.
+-- Macro+: one active goal per user.
 -- The client keeps the active goal durable and links weekly check-ins to it.
 -- Existing duplicate active rows must be reconciled before applying this
 -- migration; silently deleting a user's goals would violate provenance.

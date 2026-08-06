@@ -61,7 +61,7 @@ the **last genuine (non-same-day) persisted estimate**, never to a same-day
 row's own already-damped output. When a same-day row already exists, it is
 **upserted in place** rather than accumulated, since it represents "today's
 estimate", re-evaluated, not a new historical entry. See the doc comment above
-`app/src/main/java/com/macrotrack/app/data/ExpenditureRepository.kt` for the
+`app/src/main/java/com/macroplus/app/data/ExpenditureRepository.kt` for the
 full reasoning.
 
 ## Resolved: same-day expenditure persistence is atomic and stale-safe

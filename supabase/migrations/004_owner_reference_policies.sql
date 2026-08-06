@@ -1,4 +1,4 @@
--- MacroTrack: close cross-owner reference paths for user-owned records.
+-- Macro+: close cross-owner reference paths for user-owned records.
 --
 -- The base migration correctly scopes each row by its own user_id, but a row
 -- containing a foreign key can still be used as a bridge to another user's

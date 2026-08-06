@@ -25,7 +25,7 @@ These are copied verbatim from `CLAUDE.md`'s non-negotiable data rules and apply
 ## File Structure
 
 ```
-app/src/main/java/com/macrotrack/app/
+app/src/main/java/com/macroplus/app/
   data/
     model/
       FoodModels.kt          # Food, FoodServing (decode-only, matches `foods`/`food_servings`)
@@ -42,7 +42,7 @@ app/src/main/java/com/macrotrack/app/
   domain/
     ServingScaler.kt          # pure macro-scaling math (no I/O)
     SearchPatterns.kt         # pure ilike-pattern building/escaping (no I/O)
-app/src/test/java/com/macrotrack/app/
+app/src/test/java/com/macroplus/app/
   domain/
     ServingScalerTest.kt
     SearchPatternsTest.kt
@@ -57,8 +57,8 @@ app/src/test/java/com/macrotrack/app/
 ### Task 1: Food and FoodServing models
 
 **Files:**
-- Create: `app/src/main/java/com/macrotrack/app/data/model/FoodModels.kt`
-- Test: `app/src/test/java/com/macrotrack/app/data/model/FoodModelsTest.kt`
+- Create: `app/src/main/java/com/macroplus/app/data/model/FoodModels.kt`
+- Test: `app/src/test/java/com/macroplus/app/data/model/FoodModelsTest.kt`
 
 **Interfaces:**
 - Consumes: nothing (leaf task)
@@ -67,7 +67,7 @@ app/src/test/java/com/macrotrack/app/
 - [ ] **Step 1: Write the failing test**
 
 ```kotlin
-package com.macrotrack.app.data.model
+package com.macroplus.app.data.model
 
 import kotlinx.serialization.json.Json
 import org.junit.Assert.assertEquals
@@ -138,13 +138,13 @@ class FoodModelsTest {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `./gradlew :app:testDebugUnitTest --tests "com.macrotrack.app.data.model.FoodModelsTest"`
+Run: `./gradlew :app:testDebugUnitTest --tests "com.macroplus.app.data.model.FoodModelsTest"`
 Expected: FAIL — compile error, `Food`/`FoodServing` unresolved.
 
 - [ ] **Step 3: Write minimal implementation**
 
 ```kotlin
-package com.macrotrack.app.data.model
+package com.macroplus.app.data.model
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -193,13 +193,13 @@ data class FoodServing(
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `./gradlew :app:testDebugUnitTest --tests "com.macrotrack.app.data.model.FoodModelsTest"`
+Run: `./gradlew :app:testDebugUnitTest --tests "com.macroplus.app.data.model.FoodModelsTest"`
 Expected: PASS
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add app/src/main/java/com/macrotrack/app/data/model/FoodModels.kt app/src/test/java/com/macrotrack/app/data/model/FoodModelsTest.kt
+git add app/src/main/java/com/macroplus/app/data/model/FoodModels.kt app/src/test/java/com/macroplus/app/data/model/FoodModelsTest.kt
 git commit -m "feat: add Food and FoodServing models"
 ```
 
@@ -208,8 +208,8 @@ git commit -m "feat: add Food and FoodServing models"
 ### Task 2: ServingScaler (pure macro-scaling logic)
 
 **Files:**
-- Create: `app/src/main/java/com/macrotrack/app/domain/ServingScaler.kt`
-- Test: `app/src/test/java/com/macrotrack/app/domain/ServingScalerTest.kt`
+- Create: `app/src/main/java/com/macroplus/app/domain/ServingScaler.kt`
+- Test: `app/src/test/java/com/macroplus/app/domain/ServingScalerTest.kt`
 
 **Interfaces:**
 - Consumes: `Food`, `FoodServing` from Task 1
@@ -218,10 +218,10 @@ git commit -m "feat: add Food and FoodServing models"
 - [ ] **Step 1: Write the failing test**
 
 ```kotlin
-package com.macrotrack.app.domain
+package com.macroplus.app.domain
 
-import com.macrotrack.app.data.model.Food
-import com.macrotrack.app.data.model.FoodServing
+import com.macroplus.app.data.model.Food
+import com.macroplus.app.data.model.FoodServing
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
 import org.junit.Test
@@ -325,16 +325,16 @@ class ServingScalerTest {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `./gradlew :app:testDebugUnitTest --tests "com.macrotrack.app.domain.ServingScalerTest"`
+Run: `./gradlew :app:testDebugUnitTest --tests "com.macroplus.app.domain.ServingScalerTest"`
 Expected: FAIL — `ServingScaler` unresolved.
 
 - [ ] **Step 3: Write minimal implementation**
 
 ```kotlin
-package com.macrotrack.app.domain
+package com.macroplus.app.domain
 
-import com.macrotrack.app.data.model.Food
-import com.macrotrack.app.data.model.FoodServing
+import com.macroplus.app.data.model.Food
+import com.macroplus.app.data.model.FoodServing
 
 data class ScaledMacros(
     val calories: Double,
@@ -393,13 +393,13 @@ object ServingScaler {
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `./gradlew :app:testDebugUnitTest --tests "com.macrotrack.app.domain.ServingScalerTest"`
+Run: `./gradlew :app:testDebugUnitTest --tests "com.macroplus.app.domain.ServingScalerTest"`
 Expected: PASS (5 tests)
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add app/src/main/java/com/macrotrack/app/domain/ServingScaler.kt app/src/test/java/com/macrotrack/app/domain/ServingScalerTest.kt
+git add app/src/main/java/com/macroplus/app/domain/ServingScaler.kt app/src/test/java/com/macroplus/app/domain/ServingScalerTest.kt
 git commit -m "feat: add ServingScaler for exact serving-size macro scaling"
 ```
 
@@ -408,8 +408,8 @@ git commit -m "feat: add ServingScaler for exact serving-size macro scaling"
 ### Task 3: SearchPatterns (pure ilike-pattern building)
 
 **Files:**
-- Create: `app/src/main/java/com/macrotrack/app/domain/SearchPatterns.kt`
-- Test: `app/src/test/java/com/macrotrack/app/domain/SearchPatternsTest.kt`
+- Create: `app/src/main/java/com/macroplus/app/domain/SearchPatterns.kt`
+- Test: `app/src/test/java/com/macroplus/app/domain/SearchPatternsTest.kt`
 
 **Interfaces:**
 - Consumes: nothing
@@ -420,7 +420,7 @@ git commit -m "feat: add ServingScaler for exact serving-size macro scaling"
 - [ ] **Step 1: Write the failing test**
 
 ```kotlin
-package com.macrotrack.app.domain
+package com.macroplus.app.domain
 
 import org.junit.Assert.assertEquals
 import org.junit.Test
@@ -446,13 +446,13 @@ class SearchPatternsTest {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `./gradlew :app:testDebugUnitTest --tests "com.macrotrack.app.domain.SearchPatternsTest"`
+Run: `./gradlew :app:testDebugUnitTest --tests "com.macroplus.app.domain.SearchPatternsTest"`
 Expected: FAIL — `SearchPatterns` unresolved.
 
 - [ ] **Step 3: Write minimal implementation**
 
 ```kotlin
-package com.macrotrack.app.domain
+package com.macroplus.app.domain
 
 /** Builds safe `ilike` search patterns for Postgrest text search. */
 object SearchPatterns {
@@ -469,13 +469,13 @@ object SearchPatterns {
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `./gradlew :app:testDebugUnitTest --tests "com.macrotrack.app.domain.SearchPatternsTest"`
+Run: `./gradlew :app:testDebugUnitTest --tests "com.macroplus.app.domain.SearchPatternsTest"`
 Expected: PASS
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add app/src/main/java/com/macrotrack/app/domain/SearchPatterns.kt app/src/test/java/com/macrotrack/app/domain/SearchPatternsTest.kt
+git add app/src/main/java/com/macroplus/app/domain/SearchPatterns.kt app/src/test/java/com/macroplus/app/domain/SearchPatternsTest.kt
 git commit -m "feat: add SearchPatterns for safe ilike search queries"
 ```
 
@@ -484,7 +484,7 @@ git commit -m "feat: add SearchPatterns for safe ilike search queries"
 ### Task 4: FoodRepository
 
 **Files:**
-- Create: `app/src/main/java/com/macrotrack/app/data/FoodRepository.kt`
+- Create: `app/src/main/java/com/macroplus/app/data/FoodRepository.kt`
 
 **Interfaces:**
 - Consumes: `Food`, `FoodServing` (Task 1), `SearchPatterns.ilikePattern` (Task 3), `SupabaseClient` (existing, from `SupabaseClientProvider`)
@@ -495,11 +495,11 @@ git commit -m "feat: add SearchPatterns for safe ilike search queries"
 - [ ] **Step 1: Write the implementation**
 
 ```kotlin
-package com.macrotrack.app.data
+package com.macroplus.app.data
 
-import com.macrotrack.app.data.model.Food
-import com.macrotrack.app.data.model.FoodServing
-import com.macrotrack.app.domain.SearchPatterns
+import com.macroplus.app.data.model.Food
+import com.macroplus.app.data.model.FoodServing
+import com.macroplus.app.domain.SearchPatterns
 import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.postgrest.postgrest
 import io.github.jan.supabase.postgrest.query.Order
@@ -548,7 +548,7 @@ class SupabaseFoodRepository(private val client: SupabaseClient) : FoodRepositor
 - [ ] **Step 2: Commit**
 
 ```bash
-git add app/src/main/java/com/macrotrack/app/data/FoodRepository.kt
+git add app/src/main/java/com/macroplus/app/data/FoodRepository.kt
 git commit -m "feat: add FoodRepository for barcode lookup and name/brand search"
 ```
 
@@ -557,8 +557,8 @@ git commit -m "feat: add FoodRepository for barcode lookup and name/brand search
 ### Task 5: CustomFood models and repository
 
 **Files:**
-- Create: `app/src/main/java/com/macrotrack/app/data/model/CustomFoodModels.kt`
-- Create: `app/src/main/java/com/macrotrack/app/data/CustomFoodRepository.kt`
+- Create: `app/src/main/java/com/macroplus/app/data/model/CustomFoodModels.kt`
+- Create: `app/src/main/java/com/macroplus/app/data/CustomFoodRepository.kt`
 
 **Interfaces:**
 - Consumes: `SupabaseClient`, `Auth` plugin (`client.auth.currentUserOrNull()?.id`)
@@ -569,7 +569,7 @@ git commit -m "feat: add FoodRepository for barcode lookup and name/brand search
 - [ ] **Step 1: Write the models**
 
 ```kotlin
-package com.macrotrack.app.data.model
+package com.macroplus.app.data.model
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -609,10 +609,10 @@ data class NewCustomFood(
 - [ ] **Step 2: Write the repository**
 
 ```kotlin
-package com.macrotrack.app.data
+package com.macroplus.app.data
 
-import com.macrotrack.app.data.model.CustomFood
-import com.macrotrack.app.data.model.NewCustomFood
+import com.macroplus.app.data.model.CustomFood
+import com.macroplus.app.data.model.NewCustomFood
 import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.postgrest.postgrest
@@ -679,7 +679,7 @@ class SupabaseCustomFoodRepository(private val client: SupabaseClient) : CustomF
 - [ ] **Step 3: Commit**
 
 ```bash
-git add app/src/main/java/com/macrotrack/app/data/model/CustomFoodModels.kt app/src/main/java/com/macrotrack/app/data/CustomFoodRepository.kt
+git add app/src/main/java/com/macroplus/app/data/model/CustomFoodModels.kt app/src/main/java/com/macroplus/app/data/CustomFoodRepository.kt
 git commit -m "feat: add CustomFoodRepository for user-owned custom foods"
 ```
 
@@ -688,8 +688,8 @@ git commit -m "feat: add CustomFoodRepository for user-owned custom foods"
 ### Task 6: Recipe models and repository
 
 **Files:**
-- Create: `app/src/main/java/com/macrotrack/app/data/model/RecipeModels.kt`
-- Create: `app/src/main/java/com/macrotrack/app/data/RecipeRepository.kt`
+- Create: `app/src/main/java/com/macroplus/app/data/model/RecipeModels.kt`
+- Create: `app/src/main/java/com/macroplus/app/data/RecipeRepository.kt`
 
 **Interfaces:**
 - Consumes: `SupabaseClient`, `client.auth.currentUserOrNull()?.id`
@@ -700,7 +700,7 @@ git commit -m "feat: add CustomFoodRepository for user-owned custom foods"
 - [ ] **Step 1: Write the models**
 
 ```kotlin
-package com.macrotrack.app.data.model
+package com.macroplus.app.data.model
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -757,12 +757,12 @@ data class NewRecipeItem(
 - [ ] **Step 2: Write the repository**
 
 ```kotlin
-package com.macrotrack.app.data
+package com.macroplus.app.data
 
-import com.macrotrack.app.data.model.NewRecipe
-import com.macrotrack.app.data.model.NewRecipeItem
-import com.macrotrack.app.data.model.Recipe
-import com.macrotrack.app.data.model.RecipeItem
+import com.macroplus.app.data.model.NewRecipe
+import com.macroplus.app.data.model.NewRecipeItem
+import com.macroplus.app.data.model.Recipe
+import com.macroplus.app.data.model.RecipeItem
 import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.postgrest.postgrest
@@ -835,7 +835,7 @@ class SupabaseRecipeRepository(private val client: SupabaseClient) : RecipeRepos
 - [ ] **Step 3: Commit**
 
 ```bash
-git add app/src/main/java/com/macrotrack/app/data/model/RecipeModels.kt app/src/main/java/com/macrotrack/app/data/RecipeRepository.kt
+git add app/src/main/java/com/macroplus/app/data/model/RecipeModels.kt app/src/main/java/com/macroplus/app/data/RecipeRepository.kt
 git commit -m "feat: add RecipeRepository for user recipes and recipe items"
 ```
 
@@ -844,12 +844,12 @@ git commit -m "feat: add RecipeRepository for user recipes and recipe items"
 ### Task 7: Favorites and recent-foods
 
 **Files:**
-- Create: `app/src/main/java/com/macrotrack/app/data/model/FavoriteModels.kt`
-- Create: `app/src/main/java/com/macrotrack/app/data/model/RecentLogModels.kt`
-- Create: `app/src/main/java/com/macrotrack/app/data/FavoritesRepository.kt`
-- Create: `app/src/main/java/com/macrotrack/app/data/RecentFoodRepository.kt`
-- Create: `app/src/main/java/com/macrotrack/app/domain/RecentReferences.kt`
-- Test: `app/src/test/java/com/macrotrack/app/domain/RecentReferencesTest.kt`
+- Create: `app/src/main/java/com/macroplus/app/data/model/FavoriteModels.kt`
+- Create: `app/src/main/java/com/macroplus/app/data/model/RecentLogModels.kt`
+- Create: `app/src/main/java/com/macroplus/app/data/FavoritesRepository.kt`
+- Create: `app/src/main/java/com/macroplus/app/data/RecentFoodRepository.kt`
+- Create: `app/src/main/java/com/macroplus/app/domain/RecentReferences.kt`
+- Test: `app/src/test/java/com/macroplus/app/domain/RecentReferencesTest.kt`
 
 **Interfaces:**
 - Consumes: `SupabaseClient`, `client.auth.currentUserOrNull()?.id`
@@ -860,7 +860,7 @@ git commit -m "feat: add RecipeRepository for user recipes and recipe items"
 - [ ] **Step 1: Write the failing test for the dedupe function**
 
 ```kotlin
-package com.macrotrack.app.domain
+package com.macroplus.app.domain
 
 import org.junit.Assert.assertEquals
 import org.junit.Test
@@ -902,14 +902,14 @@ class RecentReferencesTest {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `./gradlew :app:testDebugUnitTest --tests "com.macrotrack.app.domain.RecentReferencesTest"`
+Run: `./gradlew :app:testDebugUnitTest --tests "com.macroplus.app.domain.RecentReferencesTest"`
 Expected: FAIL — `RecentLogReference`/`dedupeRecentReferences` unresolved.
 
 - [ ] **Step 3: Write the models**
 
 ```kotlin
-// app/src/main/java/com/macrotrack/app/data/model/FavoriteModels.kt
-package com.macrotrack.app.data.model
+// app/src/main/java/com/macroplus/app/data/model/FavoriteModels.kt
+package com.macroplus.app.data.model
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -934,8 +934,8 @@ data class NewFoodFavorite(
 ```
 
 ```kotlin
-// app/src/main/java/com/macrotrack/app/data/model/RecentLogModels.kt
-package com.macrotrack.app.data.model
+// app/src/main/java/com/macroplus/app/data/model/RecentLogModels.kt
+package com.macroplus.app.data.model
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -954,7 +954,7 @@ data class RecentLogEntryRow(
 - [ ] **Step 4: Write the pure dedupe function**
 
 ```kotlin
-package com.macrotrack.app.domain
+package com.macroplus.app.domain
 
 data class RecentLogReference(
     val foodId: String?,
@@ -986,17 +986,17 @@ fun dedupeRecentReferences(entries: List<RecentLogReference>, limit: Int): List<
 
 - [ ] **Step 5: Run test to verify it passes**
 
-Run: `./gradlew :app:testDebugUnitTest --tests "com.macrotrack.app.domain.RecentReferencesTest"`
+Run: `./gradlew :app:testDebugUnitTest --tests "com.macroplus.app.domain.RecentReferencesTest"`
 Expected: PASS
 
 - [ ] **Step 6: Write the repositories (no unit test — thin Postgrest wrappers, see Task 4's note)**
 
 ```kotlin
-// app/src/main/java/com/macrotrack/app/data/FavoritesRepository.kt
-package com.macrotrack.app.data
+// app/src/main/java/com/macroplus/app/data/FavoritesRepository.kt
+package com.macroplus.app.data
 
-import com.macrotrack.app.data.model.FoodFavorite
-import com.macrotrack.app.data.model.NewFoodFavorite
+import com.macroplus.app.data.model.FoodFavorite
+import com.macroplus.app.data.model.NewFoodFavorite
 import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.postgrest.postgrest
@@ -1040,12 +1040,12 @@ class SupabaseFavoritesRepository(private val client: SupabaseClient) : Favorite
 ```
 
 ```kotlin
-// app/src/main/java/com/macrotrack/app/data/RecentFoodRepository.kt
-package com.macrotrack.app.data
+// app/src/main/java/com/macroplus/app/data/RecentFoodRepository.kt
+package com.macroplus.app.data
 
-import com.macrotrack.app.data.model.RecentLogEntryRow
-import com.macrotrack.app.domain.RecentLogReference
-import com.macrotrack.app.domain.dedupeRecentReferences
+import com.macroplus.app.data.model.RecentLogEntryRow
+import com.macroplus.app.domain.RecentLogReference
+import com.macroplus.app.domain.dedupeRecentReferences
 import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.postgrest.postgrest
@@ -1085,12 +1085,12 @@ class SupabaseRecentFoodRepository(private val client: SupabaseClient) : RecentF
 - [ ] **Step 7: Commit**
 
 ```bash
-git add app/src/main/java/com/macrotrack/app/data/model/FavoriteModels.kt \
-        app/src/main/java/com/macrotrack/app/data/model/RecentLogModels.kt \
-        app/src/main/java/com/macrotrack/app/data/FavoritesRepository.kt \
-        app/src/main/java/com/macrotrack/app/data/RecentFoodRepository.kt \
-        app/src/main/java/com/macrotrack/app/domain/RecentReferences.kt \
-        app/src/test/java/com/macrotrack/app/domain/RecentReferencesTest.kt
+git add app/src/main/java/com/macroplus/app/data/model/FavoriteModels.kt \
+        app/src/main/java/com/macroplus/app/data/model/RecentLogModels.kt \
+        app/src/main/java/com/macroplus/app/data/FavoritesRepository.kt \
+        app/src/main/java/com/macroplus/app/data/RecentFoodRepository.kt \
+        app/src/main/java/com/macroplus/app/domain/RecentReferences.kt \
+        app/src/test/java/com/macroplus/app/domain/RecentReferencesTest.kt
 git commit -m "feat: add FavoritesRepository and RecentFoodRepository"
 ```
 
@@ -1099,7 +1099,7 @@ git commit -m "feat: add FavoritesRepository and RecentFoodRepository"
 ### Task 8: AppContainer wiring
 
 **Files:**
-- Create: `app/src/main/java/com/macrotrack/app/data/AppContainer.kt`
+- Create: `app/src/main/java/com/macroplus/app/data/AppContainer.kt`
 
 **Interfaces:**
 - Consumes: `SupabaseClientProvider.create()` (existing), every repository from Tasks 4–7
@@ -1110,7 +1110,7 @@ git commit -m "feat: add FavoritesRepository and RecentFoodRepository"
 - [ ] **Step 1: Write the implementation**
 
 ```kotlin
-package com.macrotrack.app.data
+package com.macroplus.app.data
 
 class AppContainer {
     private val client by lazy { SupabaseClientProvider.create() }
@@ -1126,7 +1126,7 @@ class AppContainer {
 - [ ] **Step 2: Commit**
 
 ```bash
-git add app/src/main/java/com/macrotrack/app/data/AppContainer.kt
+git add app/src/main/java/com/macroplus/app/data/AppContainer.kt
 git commit -m "feat: wire food repository layer into AppContainer"
 ```
 

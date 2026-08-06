@@ -28,7 +28,7 @@ that. The gap is that no layer yet owns actually parsing it.
 
 ## Nothing bridges `listEntries()`'s sparse instants to `AdaptiveEngine`'s dense local-day series
 
-`AdaptiveEngine` (`app/src/main/java/com/macrotrack/app/domain/AdaptiveEngine.kt`,
+`AdaptiveEngine` (`app/src/main/java/com/macroplus/app/domain/AdaptiveEngine.kt`,
 `DailyRecord`) consumes at most one `weightKg: Double?` per `LocalDate`, in a
 dense series where gap days are explicit nulls — `weightTrend` carries the
 last trend across those nulls, and `periodCoverage` counts `weightKg != null`

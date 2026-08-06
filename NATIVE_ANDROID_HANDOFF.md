@@ -1,8 +1,8 @@
-# MacroTrack — native Android handoff
+# Macro+ — native Android handoff
 
 ## What this is
 
-MacroTrack is a standard native Android application:
+Macro+ is a standard native Android application:
 
 - Kotlin source under `app/src/main/java`;
 - Jetpack Compose UI and Android Navigation;

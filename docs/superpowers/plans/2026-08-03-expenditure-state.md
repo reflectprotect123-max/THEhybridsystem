@@ -12,7 +12,7 @@
 
 - `expenditure_estimates` schema (`supabase/migrations/001_macro_foundation.sql:261-277`): `id uuid primary key default gen_random_uuid()`, `user_id uuid not null`, `window_start date not null`, `window_end date not null`, `estimate_kcal numeric not null`, `previous_estimate_kcal numeric`, `raw_estimate_kcal numeric`, `trend_slope_kg_per_week numeric`, `nutrition_days integer not null default 0`, `weight_days integer not null default 0`, `confidence text not null check (confidence in ('holding','low','medium','high'))`, `state text not null check (state in ('holding','updating'))`, `method text not null default 'intake_minus_trend_energy'`, `inputs jsonb not null default '{}'::jsonb`, `created_at timestamptz not null default now()`. RLS policy `expenditure_owner_all`: `for all to authenticated using (user_id = auth.uid()) with check (user_id = auth.uid())`.
 - `id` is its own primary key here, **not** a composite of `(user_id, some_date)` — this table is an append-only history log of recompute events, unlike `weight_trend_points`. Persistence in this slice is always a plain `insert()`, never `upsert()`.
-- **Only persist a row when `estimate.estimateKcal != null AND estimate.windowStart != null AND estimate.windowEnd != null`.** `AdaptiveEngine.estimateExpenditure` (`app/src/main/java/com/macrotrack/app/domain/AdaptiveEngine.kt`) only leaves all three null together when the input `records` list is completely empty; `estimateKcal` can also be null on a holding path with no `previousEstimateKcal` to carry forward. Every other real path — including ordinary holding once a previous estimate exists — has all three fields defined and gets persisted normally. This mirrors this repo's existing precedent (`daily_nutrition_totals`, `weight_trend_points`) that "no row" is how "nothing to report" is represented, never a fabricated sentinel. A caller finding no persisted row means "never enough information to say anything, ever" — CLAUDE.md's "missing-data holding is a valid state and must be visible" is satisfied because ordinary holding-with-a-carried-number IS persisted; only the true nothing-at-all case is unpersisted.
+- **Only persist a row when `estimate.estimateKcal != null AND estimate.windowStart != null AND estimate.windowEnd != null`.** `AdaptiveEngine.estimateExpenditure` (`app/src/main/java/com/macroplus/app/domain/AdaptiveEngine.kt`) only leaves all three null together when the input `records` list is completely empty; `estimateKcal` can also be null on a holding path with no `previousEstimateKcal` to carry forward. Every other real path — including ordinary holding once a previous estimate exists — has all three fields defined and gets persisted normally. This mirrors this repo's existing precedent (`daily_nutrition_totals`, `weight_trend_points`) that "no row" is how "nothing to report" is represented, never a fabricated sentinel. A caller finding no persisted row means "never enough information to say anything, ever" — CLAUDE.md's "missing-data holding is a valid state and must be visible" is satisfied because ordinary holding-with-a-carried-number IS persisted; only the true nothing-at-all case is unpersisted.
 - **`inputs jsonb` stores `{"explanation": "<ExpenditureEstimate.explanation>"}`.** The schema has no `explanation` text column at all, but the engine always computes one. `inputs` otherwise has no defined contract anywhere in this repo's source-of-truth docs (`docs/ADAPTIVE_ENGINE_CONTRACT.md` and `adaptive_engine.py` never mention it) — this plan defines its contract as exactly this one key. Document this in `docs/EXPENDITURE_STATE_GAPS.md` as this repo's explicit product choice, not an inherited spec.
 - `NewExpenditureEstimate.inputs` must be a **required** constructor parameter (no default value) so kotlinx.serialization's `encodeDefaults = false` can never accidentally omit it from the wire payload — this exact class of bug (a default-valued field silently omitted, then a test wrongly asserting its presence) has bitten two previous slices in this session.
 - Do not reimplement or approximate `AdaptiveEngine.estimateExpenditure` — call it directly.
@@ -28,17 +28,17 @@
 ### Task 1: DayStatusRepository.listStatuses
 
 **Files:**
-- Modify: `app/src/main/java/com/macrotrack/app/data/DayStatusRepository.kt`
+- Modify: `app/src/main/java/com/macroplus/app/data/DayStatusRepository.kt`
 
 **Interfaces:**
-- Consumes: `DailyLogStatus` (already exists, `app/src/main/java/com/macrotrack/app/data/model/DayStatusModels.kt`).
+- Consumes: `DailyLogStatus` (already exists, `app/src/main/java/com/macroplus/app/data/model/DayStatusModels.kt`).
 - Produces: `DayStatusRepository.listStatuses(since: LocalDate): List<DailyLogStatus>`, added to both the interface and `SupabaseDayStatusRepository`. Task 5 (`ExpenditureRepository`) calls this.
 
 This is a thin Postgrest I/O addition — no dedicated unit test (matching this repository's existing `getStatus`/`setStatus`, neither of which has one; no live Supabase project exists in this sandbox).
 
 - [ ] **Step 1: Add the method**
 
-In `app/src/main/java/com/macrotrack/app/data/DayStatusRepository.kt`, add `import java.time.LocalDate` is already present; add `listStatuses` to the interface:
+In `app/src/main/java/com/macroplus/app/data/DayStatusRepository.kt`, add `import java.time.LocalDate` is already present; add `listStatuses` to the interface:
 
 ```kotlin
 interface DayStatusRepository {
@@ -68,10 +68,10 @@ This requires adding `import io.github.jan.supabase.postgrest.query.Order` to th
 Resulting file:
 
 ```kotlin
-package com.macrotrack.app.data
+package com.macroplus.app.data
 
-import com.macrotrack.app.data.model.DailyLogStatus
-import com.macrotrack.app.data.model.DayStatus
+import com.macroplus.app.data.model.DailyLogStatus
+import com.macroplus.app.data.model.DayStatus
 import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.postgrest.postgrest
@@ -137,7 +137,7 @@ Expected: compiles cleanly (or, if the Android SDK is unavailable in this sandbo
 - [ ] **Step 3: Commit**
 
 ```bash
-git add app/src/main/java/com/macrotrack/app/data/DayStatusRepository.kt
+git add app/src/main/java/com/macroplus/app/data/DayStatusRepository.kt
 git commit -m "feat: add DayStatusRepository.listStatuses bulk range read"
 ```
 
@@ -146,17 +146,17 @@ git commit -m "feat: add DayStatusRepository.listStatuses bulk range read"
 ### Task 2: LogRepository.listDailyTotals
 
 **Files:**
-- Modify: `app/src/main/java/com/macrotrack/app/data/LogRepository.kt`
+- Modify: `app/src/main/java/com/macroplus/app/data/LogRepository.kt`
 
 **Interfaces:**
-- Consumes: `DailyTotals` (already exists, `app/src/main/java/com/macrotrack/app/data/model/LogEntryModels.kt`).
+- Consumes: `DailyTotals` (already exists, `app/src/main/java/com/macroplus/app/data/model/LogEntryModels.kt`).
 - Produces: `LogRepository.listDailyTotals(since: LocalDate): List<DailyTotals>`, added to both the interface and `SupabaseLogRepository`. Task 5 (`ExpenditureRepository`) calls this.
 
 No dedicated unit test — same reasoning as Task 1.
 
 - [ ] **Step 1: Add the method**
 
-In `app/src/main/java/com/macrotrack/app/data/LogRepository.kt`, add to the interface (after `getDailyTotals`):
+In `app/src/main/java/com/macroplus/app/data/LogRepository.kt`, add to the interface (after `getDailyTotals`):
 
 ```kotlin
     suspend fun listDailyTotals(since: LocalDate): List<DailyTotals>
@@ -187,7 +187,7 @@ Expected: compiles cleanly (or say so explicitly if the sandbox can't run it, pe
 - [ ] **Step 3: Commit**
 
 ```bash
-git add app/src/main/java/com/macrotrack/app/data/LogRepository.kt
+git add app/src/main/java/com/macroplus/app/data/LogRepository.kt
 git commit -m "feat: add LogRepository.listDailyTotals bulk range read"
 ```
 
@@ -196,23 +196,23 @@ git commit -m "feat: add LogRepository.listDailyTotals bulk range read"
 ### Task 3: ExpenditureRecordAssembler
 
 **Files:**
-- Create: `app/src/main/java/com/macrotrack/app/domain/ExpenditureRecordAssembler.kt`
-- Test: `app/src/test/java/com/macrotrack/app/domain/ExpenditureRecordAssemblerTest.kt`
+- Create: `app/src/main/java/com/macroplus/app/domain/ExpenditureRecordAssembler.kt`
+- Test: `app/src/test/java/com/macroplus/app/domain/ExpenditureRecordAssemblerTest.kt`
 
 **Interfaces:**
-- Consumes: `DailyLogStatus`/`DailyTotals` (`com.macrotrack.app.data.model`, already exist), `DayStatus` (already exists), `DailyRecord` (already exists, `app/src/main/java/com/macrotrack/app/domain/AdaptiveEngineModels.kt`).
-- Produces: `object ExpenditureRecordAssembler` with `fun assemble(statuses: List<DailyLogStatus>, totals: List<DailyTotals>, weightByDay: Map<LocalDate, Double>, start: LocalDate, end: LocalDate): List<DailyRecord>` in package `com.macrotrack.app.domain`. Task 5 (`ExpenditureRepository`) calls this, passing the weight-by-day map from `WeightTrendCalculator.averageByLocalDay` (already exists).
+- Consumes: `DailyLogStatus`/`DailyTotals` (`com.macroplus.app.data.model`, already exist), `DayStatus` (already exists), `DailyRecord` (already exists, `app/src/main/java/com/macroplus/app/domain/AdaptiveEngineModels.kt`).
+- Produces: `object ExpenditureRecordAssembler` with `fun assemble(statuses: List<DailyLogStatus>, totals: List<DailyTotals>, weightByDay: Map<LocalDate, Double>, start: LocalDate, end: LocalDate): List<DailyRecord>` in package `com.macroplus.app.domain`. Task 5 (`ExpenditureRepository`) calls this, passing the weight-by-day map from `WeightTrendCalculator.averageByLocalDay` (already exists).
 
 - [ ] **Step 1: Write the failing tests**
 
-Create `app/src/test/java/com/macrotrack/app/domain/ExpenditureRecordAssemblerTest.kt`:
+Create `app/src/test/java/com/macroplus/app/domain/ExpenditureRecordAssemblerTest.kt`:
 
 ```kotlin
-package com.macrotrack.app.domain
+package com.macroplus.app.domain
 
-import com.macrotrack.app.data.model.DailyLogStatus
-import com.macrotrack.app.data.model.DailyTotals
-import com.macrotrack.app.data.model.DayStatus
+import com.macroplus.app.data.model.DailyLogStatus
+import com.macroplus.app.data.model.DailyTotals
+import com.macroplus.app.data.model.DayStatus
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
@@ -299,19 +299,19 @@ class ExpenditureRecordAssemblerTest {
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `./gradlew :app:testDebugUnitTest --tests "com.macrotrack.app.domain.ExpenditureRecordAssemblerTest"`
+Run: `./gradlew :app:testDebugUnitTest --tests "com.macroplus.app.domain.ExpenditureRecordAssemblerTest"`
 Expected: FAIL — `ExpenditureRecordAssembler` is an unresolved reference.
 
 - [ ] **Step 3: Write minimal implementation**
 
-Create `app/src/main/java/com/macrotrack/app/domain/ExpenditureRecordAssembler.kt`:
+Create `app/src/main/java/com/macroplus/app/domain/ExpenditureRecordAssembler.kt`:
 
 ```kotlin
-package com.macrotrack.app.domain
+package com.macroplus.app.domain
 
-import com.macrotrack.app.data.model.DailyLogStatus
-import com.macrotrack.app.data.model.DailyTotals
-import com.macrotrack.app.data.model.DayStatus
+import com.macroplus.app.data.model.DailyLogStatus
+import com.macroplus.app.data.model.DailyTotals
+import com.macroplus.app.data.model.DayStatus
 import java.time.LocalDate
 
 /**
@@ -350,13 +350,13 @@ object ExpenditureRecordAssembler {
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `./gradlew :app:testDebugUnitTest --tests "com.macrotrack.app.domain.ExpenditureRecordAssemblerTest"`
+Run: `./gradlew :app:testDebugUnitTest --tests "com.macroplus.app.domain.ExpenditureRecordAssemblerTest"`
 Expected: PASS (4 tests).
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add app/src/main/java/com/macrotrack/app/domain/ExpenditureRecordAssembler.kt app/src/test/java/com/macrotrack/app/domain/ExpenditureRecordAssemblerTest.kt
+git add app/src/main/java/com/macroplus/app/domain/ExpenditureRecordAssembler.kt app/src/test/java/com/macroplus/app/domain/ExpenditureRecordAssemblerTest.kt
 git commit -m "feat: add ExpenditureRecordAssembler bridging per-day data sources to DailyRecord"
 ```
 
@@ -365,19 +365,19 @@ git commit -m "feat: add ExpenditureRecordAssembler bridging per-day data source
 ### Task 4: ExpenditureEstimateModels
 
 **Files:**
-- Create: `app/src/main/java/com/macrotrack/app/data/model/ExpenditureEstimateModels.kt`
-- Test: `app/src/test/java/com/macrotrack/app/data/model/ExpenditureEstimateModelsTest.kt`
+- Create: `app/src/main/java/com/macroplus/app/data/model/ExpenditureEstimateModels.kt`
+- Test: `app/src/test/java/com/macroplus/app/data/model/ExpenditureEstimateModelsTest.kt`
 
 **Interfaces:**
 - Consumes: nothing from earlier tasks.
-- Produces: `PersistedExpenditureEstimate` (decode model: `id`, `userId`, `windowStart: String`, `windowEnd: String`, `estimateKcal: Double`, `previousEstimateKcal: Double? = null`, `rawEstimateKcal: Double? = null`, `trendSlopeKgPerWeek: Double? = null`, `nutritionDays: Int`, `weightDays: Int`, `confidence: String`, `state: String`, `method: String`, `inputs: JsonObject`, `createdAt: String`) and `NewExpenditureEstimate` (insert payload: `userId`, `windowStart: String`, `windowEnd: String`, `estimateKcal: Double`, `previousEstimateKcal: Double? = null`, `rawEstimateKcal: Double? = null`, `trendSlopeKgPerWeek: Double? = null`, `nutritionDays: Int`, `weightDays: Int`, `confidence: String`, `state: String`, `inputs: JsonObject` — no default; `method`/`id`/`createdAt` are omitted, left to their schema defaults/server generation). Both `@Serializable` data classes in package `com.macrotrack.app.data.model`. Task 5 constructs `NewExpenditureEstimate` and decodes `PersistedExpenditureEstimate`.
+- Produces: `PersistedExpenditureEstimate` (decode model: `id`, `userId`, `windowStart: String`, `windowEnd: String`, `estimateKcal: Double`, `previousEstimateKcal: Double? = null`, `rawEstimateKcal: Double? = null`, `trendSlopeKgPerWeek: Double? = null`, `nutritionDays: Int`, `weightDays: Int`, `confidence: String`, `state: String`, `method: String`, `inputs: JsonObject`, `createdAt: String`) and `NewExpenditureEstimate` (insert payload: `userId`, `windowStart: String`, `windowEnd: String`, `estimateKcal: Double`, `previousEstimateKcal: Double? = null`, `rawEstimateKcal: Double? = null`, `trendSlopeKgPerWeek: Double? = null`, `nutritionDays: Int`, `weightDays: Int`, `confidence: String`, `state: String`, `inputs: JsonObject` — no default; `method`/`id`/`createdAt` are omitted, left to their schema defaults/server generation). Both `@Serializable` data classes in package `com.macroplus.app.data.model`. Task 5 constructs `NewExpenditureEstimate` and decodes `PersistedExpenditureEstimate`.
 
 - [ ] **Step 1: Write the failing test**
 
-Create `app/src/test/java/com/macrotrack/app/data/model/ExpenditureEstimateModelsTest.kt`:
+Create `app/src/test/java/com/macroplus/app/data/model/ExpenditureEstimateModelsTest.kt`:
 
 ```kotlin
-package com.macrotrack.app.data.model
+package com.macroplus.app.data.model
 
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.buildJsonObject
@@ -496,15 +496,15 @@ class ExpenditureEstimateModelsTest {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `./gradlew :app:testDebugUnitTest --tests "com.macrotrack.app.data.model.ExpenditureEstimateModelsTest"`
+Run: `./gradlew :app:testDebugUnitTest --tests "com.macroplus.app.data.model.ExpenditureEstimateModelsTest"`
 Expected: FAIL — `PersistedExpenditureEstimate`/`NewExpenditureEstimate` are unresolved references.
 
 - [ ] **Step 3: Write minimal implementation**
 
-Create `app/src/main/java/com/macrotrack/app/data/model/ExpenditureEstimateModels.kt`:
+Create `app/src/main/java/com/macroplus/app/data/model/ExpenditureEstimateModels.kt`:
 
 ```kotlin
-package com.macrotrack.app.data.model
+package com.macroplus.app.data.model
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -560,13 +560,13 @@ data class NewExpenditureEstimate(
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `./gradlew :app:testDebugUnitTest --tests "com.macrotrack.app.data.model.ExpenditureEstimateModelsTest"`
+Run: `./gradlew :app:testDebugUnitTest --tests "com.macroplus.app.data.model.ExpenditureEstimateModelsTest"`
 Expected: PASS (3 tests).
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add app/src/main/java/com/macrotrack/app/data/model/ExpenditureEstimateModels.kt app/src/test/java/com/macrotrack/app/data/model/ExpenditureEstimateModelsTest.kt
+git add app/src/main/java/com/macroplus/app/data/model/ExpenditureEstimateModels.kt app/src/test/java/com/macroplus/app/data/model/ExpenditureEstimateModelsTest.kt
 git commit -m "feat: add PersistedExpenditureEstimate/NewExpenditureEstimate models"
 ```
 
@@ -575,7 +575,7 @@ git commit -m "feat: add PersistedExpenditureEstimate/NewExpenditureEstimate mod
 ### Task 5: ExpenditureRepository
 
 **Files:**
-- Create: `app/src/main/java/com/macrotrack/app/data/ExpenditureRepository.kt`
+- Create: `app/src/main/java/com/macroplus/app/data/ExpenditureRepository.kt`
 
 **Interfaces:**
 - Consumes: `DayStatusRepository.listStatuses` (Task 1), `LogRepository.listDailyTotals` (Task 2), `ExpenditureRecordAssembler.assemble` (Task 3), `PersistedExpenditureEstimate`/`NewExpenditureEstimate` (Task 4), `WeightRepository.listEntries` (already exists), `WeightTrendCalculator.averageByLocalDay`/`WeightSample` (already exist), `AdaptiveEngine.estimateExpenditure`/`EngineConfig`/`ExpenditureEstimate` (already exist).
@@ -585,19 +585,19 @@ This is a thin Postgrest I/O wrapper (plus calls into the pure Task 3 function a
 
 - [ ] **Step 1: Write the implementation**
 
-Create `app/src/main/java/com/macrotrack/app/data/ExpenditureRepository.kt`:
+Create `app/src/main/java/com/macroplus/app/data/ExpenditureRepository.kt`:
 
 ```kotlin
-package com.macrotrack.app.data
+package com.macroplus.app.data
 
-import com.macrotrack.app.data.model.NewExpenditureEstimate
-import com.macrotrack.app.data.model.PersistedExpenditureEstimate
-import com.macrotrack.app.domain.AdaptiveEngine
-import com.macrotrack.app.domain.EngineConfig
-import com.macrotrack.app.domain.ExpenditureEstimate
-import com.macrotrack.app.domain.ExpenditureRecordAssembler
-import com.macrotrack.app.domain.WeightSample
-import com.macrotrack.app.domain.WeightTrendCalculator
+import com.macroplus.app.data.model.NewExpenditureEstimate
+import com.macroplus.app.data.model.PersistedExpenditureEstimate
+import com.macroplus.app.domain.AdaptiveEngine
+import com.macroplus.app.domain.EngineConfig
+import com.macroplus.app.domain.ExpenditureEstimate
+import com.macroplus.app.domain.ExpenditureRecordAssembler
+import com.macroplus.app.domain.WeightSample
+import com.macroplus.app.domain.WeightTrendCalculator
 import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.postgrest.postgrest
@@ -706,7 +706,7 @@ Manual verification performed in place of a live compile (record in the task rep
 - [ ] **Step 3: Commit**
 
 ```bash
-git add app/src/main/java/com/macrotrack/app/data/ExpenditureRepository.kt
+git add app/src/main/java/com/macroplus/app/data/ExpenditureRepository.kt
 git commit -m "feat: add ExpenditureRepository computing and persisting expenditure_estimates from full logged history"
 ```
 
@@ -715,7 +715,7 @@ git commit -m "feat: add ExpenditureRepository computing and persisting expendit
 ### Task 6: AppContainer wiring and gaps documentation
 
 **Files:**
-- Modify: `app/src/main/java/com/macrotrack/app/data/AppContainer.kt`
+- Modify: `app/src/main/java/com/macroplus/app/data/AppContainer.kt`
 - Create: `docs/EXPENDITURE_STATE_GAPS.md`
 
 **Interfaces:**
@@ -724,7 +724,7 @@ git commit -m "feat: add ExpenditureRepository computing and persisting expendit
 
 - [ ] **Step 1: Add the wiring**
 
-In `app/src/main/java/com/macrotrack/app/data/AppContainer.kt`, add one line after `trendRepository`:
+In `app/src/main/java/com/macroplus/app/data/AppContainer.kt`, add one line after `trendRepository`:
 
 ```kotlin
     val expenditureRepository: ExpenditureRepository by lazy {
@@ -735,7 +735,7 @@ In `app/src/main/java/com/macrotrack/app/data/AppContainer.kt`, add one line aft
 Resulting file:
 
 ```kotlin
-package com.macrotrack.app.data
+package com.macroplus.app.data
 
 class AppContainer {
     private val client by lazy { SupabaseClientProvider.create() }
@@ -828,7 +828,7 @@ Expected: PASS, all existing tests plus `ExpenditureRecordAssemblerTest`/`Expend
 - [ ] **Step 4: Commit**
 
 ```bash
-git add app/src/main/java/com/macrotrack/app/data/AppContainer.kt docs/EXPENDITURE_STATE_GAPS.md
+git add app/src/main/java/com/macroplus/app/data/AppContainer.kt docs/EXPENDITURE_STATE_GAPS.md
 git commit -m "feat: wire ExpenditureRepository into AppContainer; document expenditure-state gaps"
 ```
 

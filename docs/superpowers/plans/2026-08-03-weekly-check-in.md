@@ -32,8 +32,8 @@
 >   side (`PersistedCheckIn.modules: List<CheckInModuleDto>`) and the write
 >   side can't drift on field names.
 >
-> See `app/src/main/java/com/macrotrack/app/data/model/CheckInModels.kt` and
-> `app/src/main/java/com/macrotrack/app/data/CheckInRepository.kt` for the
+> See `app/src/main/java/com/macroplus/app/data/model/CheckInModels.kt` and
+> `app/src/main/java/com/macroplus/app/data/CheckInRepository.kt` for the
 > actual shipped code, and `docs/WEEKLY_CHECKIN_GAPS.md` for the full
 > incident and remaining open questions.
 
@@ -59,7 +59,7 @@
 ### Task 1: Refactor ExpenditureRepository to expose loadRecords()
 
 **Files:**
-- Modify: `app/src/main/java/com/macrotrack/app/data/ExpenditureRepository.kt`
+- Modify: `app/src/main/java/com/macroplus/app/data/ExpenditureRepository.kt`
 
 **Interfaces:**
 - Consumes: nothing new — this is a pure refactor of already-committed code.
@@ -69,7 +69,7 @@ This is the single riskiest task in this plan: `recomputeExpenditure()` already 
 
 - [ ] **Step 1: Read the current file in full**
 
-Read `app/src/main/java/com/macrotrack/app/data/ExpenditureRepository.kt` before editing. Its current `recomputeExpenditure()` (as of this plan) is:
+Read `app/src/main/java/com/macroplus/app/data/ExpenditureRepository.kt` before editing. Its current `recomputeExpenditure()` (as of this plan) is:
 
 ```kotlin
     override suspend fun recomputeExpenditure(): ExpenditureEstimate {
@@ -150,7 +150,7 @@ interface ExpenditureRepository {
 }
 ```
 
-Add `import com.macrotrack.app.domain.DailyRecord` to the imports (not currently imported — `ExpenditureEstimate`/`EngineConfig` etc. already are).
+Add `import com.macroplus.app.domain.DailyRecord` to the imports (not currently imported — `ExpenditureEstimate`/`EngineConfig` etc. already are).
 
 - [ ] **Step 3: Extract the logic into `loadRecords()`, and call it from `recomputeExpenditure()`**
 
@@ -245,7 +245,7 @@ Attempt `./gradlew :app:compileDebugKotlin` (expect it may be infeasible in this
 - [ ] **Step 5: Commit**
 
 ```bash
-git add app/src/main/java/com/macrotrack/app/data/ExpenditureRepository.kt
+git add app/src/main/java/com/macroplus/app/data/ExpenditureRepository.kt
 git commit -m "refactor: expose ExpenditureRepository.loadRecords() for reuse by the weekly check-in slice"
 ```
 
@@ -254,19 +254,19 @@ git commit -m "refactor: expose ExpenditureRepository.loadRecords() for reuse by
 ### Task 2: CheckInModels
 
 **Files:**
-- Create: `app/src/main/java/com/macrotrack/app/data/model/CheckInModels.kt`
-- Test: `app/src/test/java/com/macrotrack/app/data/model/CheckInModelsTest.kt`
+- Create: `app/src/main/java/com/macroplus/app/data/model/CheckInModels.kt`
+- Test: `app/src/test/java/com/macroplus/app/data/model/CheckInModelsTest.kt`
 
 **Interfaces:**
 - Consumes: nothing from earlier tasks.
-- Produces: `CheckInModuleDto(key: String, action: String)` (a serializable mirror of the domain `CheckInModule`, for jsonb encoding — `app/src/main/java/com/macrotrack/app/domain/WeeklyCheckIn.kt`'s `CheckInModule` is not itself `@Serializable`), `PersistedCheckIn` (decode model mirroring the full `weekly_check_ins` row), `NewCheckIn` (upsert payload). All three `@Serializable` data classes in package `com.macrotrack.app.data.model`. Task 3 constructs `NewCheckIn`/`CheckInModuleDto` and decodes `PersistedCheckIn`.
+- Produces: `CheckInModuleDto(key: String, action: String)` (a serializable mirror of the domain `CheckInModule`, for jsonb encoding — `app/src/main/java/com/macroplus/app/domain/WeeklyCheckIn.kt`'s `CheckInModule` is not itself `@Serializable`), `PersistedCheckIn` (decode model mirroring the full `weekly_check_ins` row), `NewCheckIn` (upsert payload). All three `@Serializable` data classes in package `com.macroplus.app.data.model`. Task 3 constructs `NewCheckIn`/`CheckInModuleDto` and decodes `PersistedCheckIn`.
 
 - [ ] **Step 1: Write the failing tests**
 
-Create `app/src/test/java/com/macrotrack/app/data/model/CheckInModelsTest.kt`:
+Create `app/src/test/java/com/macroplus/app/data/model/CheckInModelsTest.kt`:
 
 ```kotlin
-package com.macrotrack.app.data.model
+package com.macroplus.app.data.model
 
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -397,15 +397,15 @@ class CheckInModelsTest {
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `./gradlew :app:testDebugUnitTest --tests "com.macrotrack.app.data.model.CheckInModelsTest"`
+Run: `./gradlew :app:testDebugUnitTest --tests "com.macroplus.app.data.model.CheckInModelsTest"`
 Expected: FAIL — `PersistedCheckIn`/`NewCheckIn`/`CheckInModuleDto` are unresolved references.
 
 - [ ] **Step 3: Write minimal implementation**
 
-Create `app/src/main/java/com/macrotrack/app/data/model/CheckInModels.kt`:
+Create `app/src/main/java/com/macroplus/app/data/model/CheckInModels.kt`:
 
 ```kotlin
-package com.macrotrack.app.data.model
+package com.macroplus.app.data.model
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -469,13 +469,13 @@ data class NewCheckIn(
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `./gradlew :app:testDebugUnitTest --tests "com.macrotrack.app.data.model.CheckInModelsTest"`
+Run: `./gradlew :app:testDebugUnitTest --tests "com.macroplus.app.data.model.CheckInModelsTest"`
 Expected: PASS (4 tests).
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add app/src/main/java/com/macrotrack/app/data/model/CheckInModels.kt app/src/test/java/com/macrotrack/app/data/model/CheckInModelsTest.kt
+git add app/src/main/java/com/macroplus/app/data/model/CheckInModels.kt app/src/test/java/com/macroplus/app/data/model/CheckInModelsTest.kt
 git commit -m "feat: add CheckInModuleDto/PersistedCheckIn/NewCheckIn models"
 ```
 
@@ -484,27 +484,27 @@ git commit -m "feat: add CheckInModuleDto/PersistedCheckIn/NewCheckIn models"
 ### Task 3: CheckInRepository
 
 **Files:**
-- Create: `app/src/main/java/com/macrotrack/app/data/CheckInRepository.kt`
+- Create: `app/src/main/java/com/macroplus/app/data/CheckInRepository.kt`
 
 **Interfaces:**
-- Consumes: `CheckInModuleDto`/`PersistedCheckIn`/`NewCheckIn` (Task 2, `com.macrotrack.app.data.model`); `ExpenditureRepository.loadRecords()` (Task 1); `WeightRepository.listEntries` (already exists); `WeeklyCheckIn.weeklyCheckIn`/`CheckInResult`/`CheckInModule` (already exists, `com.macrotrack.app.domain`); `EngineConfig` (already exists).
+- Consumes: `CheckInModuleDto`/`PersistedCheckIn`/`NewCheckIn` (Task 2, `com.macroplus.app.data.model`); `ExpenditureRepository.loadRecords()` (Task 1); `WeightRepository.listEntries` (already exists); `WeeklyCheckIn.weeklyCheckIn`/`CheckInResult`/`CheckInModule` (already exists, `com.macroplus.app.domain`); `EngineConfig` (already exists).
 - Produces: `CheckInRepository` interface with `suspend fun getCheckIn(weekStart: LocalDate): PersistedCheckIn?`, `suspend fun recomputeCheckIn(weekStart: LocalDate, weekEnd: LocalDate, targetRateKgPerWeek: Double, proteinGPerKg: Double = EngineConfig().defaultProteinGPerKg, fatGPerKg: Double = EngineConfig().defaultFatGPerKg): CheckInResult`, and `suspend fun resolve(weekStart: LocalDate, accepted: Boolean): PersistedCheckIn`; and `SupabaseCheckInRepository(client: SupabaseClient, expenditureRepository: ExpenditureRepository, weightRepository: WeightRepository) : CheckInRepository`. Task 4 (`AppContainer`) constructs `SupabaseCheckInRepository(client, expenditureRepository, weightRepository)`.
 
 This is a thin Postgrest I/O wrapper (plus calls into already-built pure functions) — matching `ExpenditureRepository`/`TrendRepository`, no dedicated unit test in this plan (no live Supabase project in this sandbox; verified by static review against the real postgrest-kt 3.7.0 sources, same as prior slices).
 
 - [ ] **Step 1: Write the implementation**
 
-Create `app/src/main/java/com/macrotrack/app/data/CheckInRepository.kt`:
+Create `app/src/main/java/com/macroplus/app/data/CheckInRepository.kt`:
 
 ```kotlin
-package com.macrotrack.app.data
+package com.macroplus.app.data
 
-import com.macrotrack.app.data.model.CheckInModuleDto
-import com.macrotrack.app.data.model.NewCheckIn
-import com.macrotrack.app.data.model.PersistedCheckIn
-import com.macrotrack.app.domain.CheckInResult
-import com.macrotrack.app.domain.EngineConfig
-import com.macrotrack.app.domain.weeklyCheckIn
+import com.macroplus.app.data.model.CheckInModuleDto
+import com.macroplus.app.data.model.NewCheckIn
+import com.macroplus.app.data.model.PersistedCheckIn
+import com.macroplus.app.domain.CheckInResult
+import com.macroplus.app.domain.EngineConfig
+import com.macroplus.app.domain.weeklyCheckIn
 import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.postgrest.postgrest
@@ -640,7 +640,7 @@ Manual verification performed in place of a live compile (record in the task rep
 - [ ] **Step 3: Commit**
 
 ```bash
-git add app/src/main/java/com/macrotrack/app/data/CheckInRepository.kt
+git add app/src/main/java/com/macroplus/app/data/CheckInRepository.kt
 git commit -m "feat: add CheckInRepository computing and persisting weekly_check_ins from full logged history"
 ```
 
@@ -649,7 +649,7 @@ git commit -m "feat: add CheckInRepository computing and persisting weekly_check
 ### Task 4: AppContainer wiring and gaps documentation
 
 **Files:**
-- Modify: `app/src/main/java/com/macrotrack/app/data/AppContainer.kt`
+- Modify: `app/src/main/java/com/macroplus/app/data/AppContainer.kt`
 - Create: `docs/WEEKLY_CHECKIN_GAPS.md`
 
 **Interfaces:**
@@ -658,7 +658,7 @@ git commit -m "feat: add CheckInRepository computing and persisting weekly_check
 
 - [ ] **Step 1: Add the wiring**
 
-In `app/src/main/java/com/macrotrack/app/data/AppContainer.kt`, add one line after `expenditureRepository`:
+In `app/src/main/java/com/macroplus/app/data/AppContainer.kt`, add one line after `expenditureRepository`:
 
 ```kotlin
     val checkInRepository: CheckInRepository by lazy {
@@ -669,7 +669,7 @@ In `app/src/main/java/com/macrotrack/app/data/AppContainer.kt`, add one line aft
 Resulting file:
 
 ```kotlin
-package com.macrotrack.app.data
+package com.macroplus.app.data
 
 class AppContainer {
     private val client by lazy { SupabaseClientProvider.create() }
@@ -763,7 +763,7 @@ Expected: PASS, all existing tests plus `CheckInModelsTest` green.
 - [ ] **Step 4: Commit**
 
 ```bash
-git add app/src/main/java/com/macrotrack/app/data/AppContainer.kt docs/WEEKLY_CHECKIN_GAPS.md
+git add app/src/main/java/com/macroplus/app/data/AppContainer.kt docs/WEEKLY_CHECKIN_GAPS.md
 git commit -m "feat: wire CheckInRepository into AppContainer; document weekly-check-in gaps"
 ```
 

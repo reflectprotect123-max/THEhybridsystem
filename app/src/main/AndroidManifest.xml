@@ -8,11 +8,11 @@
         android:required="false" />
 
     <application
-        android:name=".MacroTrackApplication"
+        android:name=".MacroPlusApplication"
         android:allowBackup="true"
-        android:label="MacroTrack"
+        android:label="Macro+"
         android:supportsRtl="true"
-        android:theme="@style/Theme.MacroTrack">
+        android:theme="@style/Theme.MacroPlus">
         <activity
             android:name=".MainActivity"
             android:exported="true">

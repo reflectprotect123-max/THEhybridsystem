@@ -12,11 +12,11 @@
 
 - `weight_trend_points` schema (`supabase/migrations/001_macro_foundation.sql:218-226`): `user_id uuid not null`, `trend_date date not null`, `trend_weight_kg numeric not null`, `method text not null default 'ewma_reference'`, `source_window_days integer not null default 14`, `created_at timestamptz not null default now()`, `primary key (user_id, trend_date)`. RLS policy `trend_owner_all`: `for all to authenticated using (user_id = auth.uid()) with check (user_id = auth.uid())`.
 - `trend_weight_kg` is `NOT NULL` — a calendar day with no computed trend value (e.g. before the first ever weigh-in) must never be upserted with a sentinel; it must simply be skipped.
-- The EWMA computation itself is `AdaptiveEngine.weightTrend(values: List<Double?>, alpha: Double = 0.20)` (`app/src/main/java/com/macrotrack/app/domain/AdaptiveEngine.kt`) — do not reimplement or approximate this algorithm. It expects one value per calendar day, ordered oldest-first, with explicit `null` for missing days, and carries the last non-null trend value forward across those nulls.
+- The EWMA computation itself is `AdaptiveEngine.weightTrend(values: List<Double?>, alpha: Double = 0.20)` (`app/src/main/java/com/macroplus/app/domain/AdaptiveEngine.kt`) — do not reimplement or approximate this algorithm. It expects one value per calendar day, ordered oldest-first, with explicit `null` for missing days, and carries the last non-null trend value forward across those nulls.
 - Local-day bucketing uses `ZoneId.systemDefault()`, not UTC — `food_log_entries.log_date`/`daily_log_status.log_date` are already device-local `LocalDate` columns (fed from `LocalDate.toString()`), and trend bucketing must stay consistent with that day-keying, not drift to UTC.
 - Multiple weigh-ins on the same local day are combined by averaging — the standard coaching convention — as one explicit, named, unit-tested function, never inlined arithmetic at a call site.
-- `WeightEntry.measuredAt` (`app/src/main/java/com/macrotrack/app/data/model/WeightModels.kt`) is an opaque ISO-8601 `String`. Per `docs/WEIGHT_LOGGING_GAPS.md`, parse it with `OffsetDateTime.parse(value).toInstant()` — **never** `Instant.parse(value)`, which throws on the `+00:00`-offset form PostgREST can return on read (it only accepts the `Z`-suffixed form).
-- Any persisted or displayed trend weight is rounded with `round1` (`app/src/main/java/com/macrotrack/app/domain/Rounding.kt`, `internal fun round1(value: Double): Double`), matching how `ExpenditureEstimate` rounds elsewhere. `round1` is `internal`, so it's visible module-wide (the whole `app` module) even though `TrendRepository` lives in a different package than `Rounding.kt`.
+- `WeightEntry.measuredAt` (`app/src/main/java/com/macroplus/app/data/model/WeightModels.kt`) is an opaque ISO-8601 `String`. Per `docs/WEIGHT_LOGGING_GAPS.md`, parse it with `OffsetDateTime.parse(value).toInstant()` — **never** `Instant.parse(value)`, which throws on the `+00:00`-offset form PostgREST can return on read (it only accepts the `Z`-suffixed form).
+- Any persisted or displayed trend weight is rounded with `round1` (`app/src/main/java/com/macroplus/app/domain/Rounding.kt`, `internal fun round1(value: Double): Double`), matching how `ExpenditureEstimate` rounds elsewhere. `round1` is `internal`, so it's visible module-wide (the whole `app` module) even though `TrendRepository` lives in a different package than `Rounding.kt`.
 - Every repository's `requireUserId()` calls `client.auth.awaitInitialization()` before `client.auth.currentUserOrNull()`.
 - `TrendRepository` reuses the verified Postgrest DSL: `client.postgrest.from(table).upsert(values: List<T>) { select() }.decodeList<T>()` — confirmed against the real postgrest-kt 3.7.0 sources (`PostgrestQueryBuilder.upsert(values: List<T>, request: UpsertRequestBuilder.() -> Unit)`, which serializes the list and calls the `JsonArray` overload).
 - Out of scope: any UI/charting, `expenditure_estimates` persistence, `weekly_check_ins` wiring. Those are separate future slices.
@@ -26,19 +26,19 @@
 ### Task 1: WeightTrendCalculator
 
 **Files:**
-- Create: `app/src/main/java/com/macrotrack/app/domain/WeightTrendCalculator.kt`
-- Test: `app/src/test/java/com/macrotrack/app/domain/WeightTrendCalculatorTest.kt`
+- Create: `app/src/main/java/com/macroplus/app/domain/WeightTrendCalculator.kt`
+- Test: `app/src/test/java/com/macroplus/app/domain/WeightTrendCalculatorTest.kt`
 
 **Interfaces:**
-- Consumes: `AdaptiveEngine.weightTrend(values: List<Double?>, alpha: Double = 0.20): List<Double?>` (already exists, `app/src/main/java/com/macrotrack/app/domain/AdaptiveEngine.kt`).
-- Produces: `data class WeightSample(val measuredAt: Instant, val weightKg: Double)` and `object WeightTrendCalculator` with `fun dailyTrend(samples: List<WeightSample>, start: LocalDate, end: LocalDate, zoneId: ZoneId = ZoneId.systemDefault(), alpha: Double = 0.20): List<Pair<LocalDate, Double?>>`, both in package `com.macrotrack.app.domain`. Task 3 (`TrendRepository`) constructs `WeightSample` from parsed `WeightEntry` rows and calls `dailyTrend`.
+- Consumes: `AdaptiveEngine.weightTrend(values: List<Double?>, alpha: Double = 0.20): List<Double?>` (already exists, `app/src/main/java/com/macroplus/app/domain/AdaptiveEngine.kt`).
+- Produces: `data class WeightSample(val measuredAt: Instant, val weightKg: Double)` and `object WeightTrendCalculator` with `fun dailyTrend(samples: List<WeightSample>, start: LocalDate, end: LocalDate, zoneId: ZoneId = ZoneId.systemDefault(), alpha: Double = 0.20): List<Pair<LocalDate, Double?>>`, both in package `com.macroplus.app.domain`. Task 3 (`TrendRepository`) constructs `WeightSample` from parsed `WeightEntry` rows and calls `dailyTrend`.
 
 - [ ] **Step 1: Write the failing tests**
 
-Create `app/src/test/java/com/macrotrack/app/domain/WeightTrendCalculatorTest.kt`:
+Create `app/src/test/java/com/macroplus/app/domain/WeightTrendCalculatorTest.kt`:
 
 ```kotlin
-package com.macrotrack.app.domain
+package com.macroplus.app.domain
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -119,15 +119,15 @@ class WeightTrendCalculatorTest {
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `./gradlew :app:testDebugUnitTest --tests "com.macrotrack.app.domain.WeightTrendCalculatorTest"`
+Run: `./gradlew :app:testDebugUnitTest --tests "com.macroplus.app.domain.WeightTrendCalculatorTest"`
 Expected: FAIL — `WeightSample`/`WeightTrendCalculator` are unresolved references.
 
 - [ ] **Step 3: Write minimal implementation**
 
-Create `app/src/main/java/com/macrotrack/app/domain/WeightTrendCalculator.kt`:
+Create `app/src/main/java/com/macroplus/app/domain/WeightTrendCalculator.kt`:
 
 ```kotlin
-package com.macrotrack.app.domain
+package com.macroplus.app.domain
 
 import java.time.Instant
 import java.time.LocalDate
@@ -168,13 +168,13 @@ object WeightTrendCalculator {
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `./gradlew :app:testDebugUnitTest --tests "com.macrotrack.app.domain.WeightTrendCalculatorTest"`
+Run: `./gradlew :app:testDebugUnitTest --tests "com.macroplus.app.domain.WeightTrendCalculatorTest"`
 Expected: PASS (4 tests).
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add app/src/main/java/com/macrotrack/app/domain/WeightTrendCalculator.kt app/src/test/java/com/macrotrack/app/domain/WeightTrendCalculatorTest.kt
+git add app/src/main/java/com/macroplus/app/domain/WeightTrendCalculator.kt app/src/test/java/com/macroplus/app/domain/WeightTrendCalculatorTest.kt
 git commit -m "feat: add WeightTrendCalculator bridging sparse weigh-ins to AdaptiveEngine's dense trend series"
 ```
 
@@ -183,19 +183,19 @@ git commit -m "feat: add WeightTrendCalculator bridging sparse weigh-ins to Adap
 ### Task 2: WeightTrendModels
 
 **Files:**
-- Create: `app/src/main/java/com/macrotrack/app/data/model/WeightTrendModels.kt`
-- Test: `app/src/test/java/com/macrotrack/app/data/model/WeightTrendModelsTest.kt`
+- Create: `app/src/main/java/com/macroplus/app/data/model/WeightTrendModels.kt`
+- Test: `app/src/test/java/com/macroplus/app/data/model/WeightTrendModelsTest.kt`
 
 **Interfaces:**
 - Consumes: nothing from earlier tasks.
-- Produces: `TrendPoint` (decode model: `userId`, `trendDate: String`, `trendWeightKg: Double`, `method: String`, `sourceWindowDays: Int`, `createdAt: String`) and `NewTrendPoint` (upsert payload: `userId`, `trendDate: String`, `trendWeightKg: Double`, `method: String = "ewma_reference"`, `sourceWindowDays: Int = 14` — no `createdAt`, server-generated). Both `@Serializable` data classes in package `com.macrotrack.app.data.model`. Task 3 constructs `NewTrendPoint` and decodes `TrendPoint`.
+- Produces: `TrendPoint` (decode model: `userId`, `trendDate: String`, `trendWeightKg: Double`, `method: String`, `sourceWindowDays: Int`, `createdAt: String`) and `NewTrendPoint` (upsert payload: `userId`, `trendDate: String`, `trendWeightKg: Double`, `method: String = "ewma_reference"`, `sourceWindowDays: Int = 14` — no `createdAt`, server-generated). Both `@Serializable` data classes in package `com.macroplus.app.data.model`. Task 3 constructs `NewTrendPoint` and decodes `TrendPoint`.
 
 - [ ] **Step 1: Write the failing test**
 
-Create `app/src/test/java/com/macrotrack/app/data/model/WeightTrendModelsTest.kt`:
+Create `app/src/test/java/com/macroplus/app/data/model/WeightTrendModelsTest.kt`:
 
 ```kotlin
-package com.macrotrack.app.data.model
+package com.macroplus.app.data.model
 
 import kotlinx.serialization.json.Json
 import org.junit.Assert.assertEquals
@@ -247,15 +247,15 @@ class WeightTrendModelsTest {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `./gradlew :app:testDebugUnitTest --tests "com.macrotrack.app.data.model.WeightTrendModelsTest"`
+Run: `./gradlew :app:testDebugUnitTest --tests "com.macroplus.app.data.model.WeightTrendModelsTest"`
 Expected: FAIL — `TrendPoint`/`NewTrendPoint` are unresolved references.
 
 - [ ] **Step 3: Write minimal implementation**
 
-Create `app/src/main/java/com/macrotrack/app/data/model/WeightTrendModels.kt`:
+Create `app/src/main/java/com/macroplus/app/data/model/WeightTrendModels.kt`:
 
 ```kotlin
-package com.macrotrack.app.data.model
+package com.macroplus.app.data.model
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -288,13 +288,13 @@ data class NewTrendPoint(
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `./gradlew :app:testDebugUnitTest --tests "com.macrotrack.app.data.model.WeightTrendModelsTest"`
+Run: `./gradlew :app:testDebugUnitTest --tests "com.macroplus.app.data.model.WeightTrendModelsTest"`
 Expected: PASS (2 tests).
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add app/src/main/java/com/macrotrack/app/data/model/WeightTrendModels.kt app/src/test/java/com/macrotrack/app/data/model/WeightTrendModelsTest.kt
+git add app/src/main/java/com/macroplus/app/data/model/WeightTrendModels.kt app/src/test/java/com/macroplus/app/data/model/WeightTrendModelsTest.kt
 git commit -m "feat: add TrendPoint/NewTrendPoint models"
 ```
 
@@ -303,26 +303,26 @@ git commit -m "feat: add TrendPoint/NewTrendPoint models"
 ### Task 3: TrendRepository
 
 **Files:**
-- Create: `app/src/main/java/com/macrotrack/app/data/TrendRepository.kt`
+- Create: `app/src/main/java/com/macroplus/app/data/TrendRepository.kt`
 
 **Interfaces:**
-- Consumes: `TrendPoint`/`NewTrendPoint` (Task 2, `com.macrotrack.app.data.model`); `WeightSample`/`WeightTrendCalculator.dailyTrend` (Task 1, `com.macrotrack.app.domain`); `WeightRepository.listEntries(since: Instant): List<WeightEntry>` (already exists, `app/src/main/java/com/macrotrack/app/data/WeightRepository.kt`); `round1` (already exists, `com.macrotrack.app.domain.Rounding.kt`, `internal`, module-visible).
+- Consumes: `TrendPoint`/`NewTrendPoint` (Task 2, `com.macroplus.app.data.model`); `WeightSample`/`WeightTrendCalculator.dailyTrend` (Task 1, `com.macroplus.app.domain`); `WeightRepository.listEntries(since: Instant): List<WeightEntry>` (already exists, `app/src/main/java/com/macroplus/app/data/WeightRepository.kt`); `round1` (already exists, `com.macroplus.app.domain.Rounding.kt`, `internal`, module-visible).
 - Produces: `TrendRepository` interface with `suspend fun listTrendPoints(since: Instant): List<TrendPoint>` and `suspend fun recomputeTrend(since: Instant): List<TrendPoint>`; and `SupabaseTrendRepository(client: SupabaseClient, weightRepository: WeightRepository) : TrendRepository`. Task 4 (`AppContainer`) constructs `SupabaseTrendRepository(client, weightRepository)`.
 
 This is a thin Postgrest I/O wrapper (plus a call into the pure Task 1 function) — matching `LogRepository`/`WeightRepository`, it has no dedicated unit test in this plan (no live Supabase project exists in this sandbox; verified instead by static review against the real postgrest-kt 3.7.0 sources, same as prior slices).
 
 - [ ] **Step 1: Write the implementation**
 
-Create `app/src/main/java/com/macrotrack/app/data/TrendRepository.kt`:
+Create `app/src/main/java/com/macroplus/app/data/TrendRepository.kt`:
 
 ```kotlin
-package com.macrotrack.app.data
+package com.macroplus.app.data
 
-import com.macrotrack.app.data.model.NewTrendPoint
-import com.macrotrack.app.data.model.TrendPoint
-import com.macrotrack.app.domain.WeightSample
-import com.macrotrack.app.domain.WeightTrendCalculator
-import com.macrotrack.app.domain.round1
+import com.macroplus.app.data.model.NewTrendPoint
+import com.macroplus.app.data.model.TrendPoint
+import com.macroplus.app.domain.WeightSample
+import com.macroplus.app.domain.WeightTrendCalculator
+import com.macroplus.app.domain.round1
 import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.postgrest.postgrest
@@ -385,12 +385,12 @@ class SupabaseTrendRepository(
 Run: `./gradlew :app:compileDebugKotlin`
 Expected: compiles cleanly (or, if the Android SDK is unavailable in this sandbox, say so explicitly and rely on the manual API-surface review below instead of claiming this ran).
 
-Manual verification performed in place of a live compile (record in the task report): `upsert(payload) { select() }` where `payload: List<NewTrendPoint>` matches `PostgrestQueryBuilder.upsert(values: List<T>, request: UpsertRequestBuilder.() -> Unit = {})` from the real postgrest-kt 3.7.0 sources (`io/github/jan/supabase/postgrest/query/PostgrestQueryBuilder.kt`), which serializes the list with `postgrest.serializer.encodeToJsonElement(values)` and delegates to the `JsonArray` overload — an established pattern, `DayStatusRepository.setStatus` already uses the single-value `upsert(payload) { select() }` overload of the same function family. `round1` (from `com.macrotrack.app.domain.Rounding.kt`) is declared `internal`, which in Kotlin is module-visible, not package-visible — `TrendRepository` (package `com.macrotrack.app.data`) can call it from within the same `app` Gradle module without a visibility error.
+Manual verification performed in place of a live compile (record in the task report): `upsert(payload) { select() }` where `payload: List<NewTrendPoint>` matches `PostgrestQueryBuilder.upsert(values: List<T>, request: UpsertRequestBuilder.() -> Unit = {})` from the real postgrest-kt 3.7.0 sources (`io/github/jan/supabase/postgrest/query/PostgrestQueryBuilder.kt`), which serializes the list with `postgrest.serializer.encodeToJsonElement(values)` and delegates to the `JsonArray` overload — an established pattern, `DayStatusRepository.setStatus` already uses the single-value `upsert(payload) { select() }` overload of the same function family. `round1` (from `com.macroplus.app.domain.Rounding.kt`) is declared `internal`, which in Kotlin is module-visible, not package-visible — `TrendRepository` (package `com.macroplus.app.data`) can call it from within the same `app` Gradle module without a visibility error.
 
 - [ ] **Step 3: Commit**
 
 ```bash
-git add app/src/main/java/com/macrotrack/app/data/TrendRepository.kt
+git add app/src/main/java/com/macroplus/app/data/TrendRepository.kt
 git commit -m "feat: add TrendRepository computing and upserting weight_trend_points from WeightRepository entries"
 ```
 
@@ -399,7 +399,7 @@ git commit -m "feat: add TrendRepository computing and upserting weight_trend_po
 ### Task 4: AppContainer wiring
 
 **Files:**
-- Modify: `app/src/main/java/com/macrotrack/app/data/AppContainer.kt`
+- Modify: `app/src/main/java/com/macroplus/app/data/AppContainer.kt`
 
 **Interfaces:**
 - Consumes: `TrendRepository`/`SupabaseTrendRepository` from Task 3.
@@ -407,7 +407,7 @@ git commit -m "feat: add TrendRepository computing and upserting weight_trend_po
 
 - [ ] **Step 1: Add the wiring**
 
-In `app/src/main/java/com/macrotrack/app/data/AppContainer.kt`, add one line after `weightRepository`, giving `SupabaseTrendRepository` the already-constructed `weightRepository` as its second constructor argument:
+In `app/src/main/java/com/macroplus/app/data/AppContainer.kt`, add one line after `weightRepository`, giving `SupabaseTrendRepository` the already-constructed `weightRepository` as its second constructor argument:
 
 ```kotlin
     val trendRepository: TrendRepository by lazy { SupabaseTrendRepository(client, weightRepository) }
@@ -416,7 +416,7 @@ In `app/src/main/java/com/macrotrack/app/data/AppContainer.kt`, add one line aft
 Resulting file:
 
 ```kotlin
-package com.macrotrack.app.data
+package com.macroplus.app.data
 
 class AppContainer {
     private val client by lazy { SupabaseClientProvider.create() }
@@ -443,7 +443,7 @@ Expected: PASS, all existing tests plus `WeightTrendCalculatorTest`/`WeightTrend
 - [ ] **Step 3: Commit**
 
 ```bash
-git add app/src/main/java/com/macrotrack/app/data/AppContainer.kt
+git add app/src/main/java/com/macroplus/app/data/AppContainer.kt
 git commit -m "feat: wire TrendRepository into AppContainer"
 ```
 

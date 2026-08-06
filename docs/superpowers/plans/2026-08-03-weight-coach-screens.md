@@ -4,7 +4,7 @@
 
 **Goal:** Add the two screens deliberately deferred from `docs/superpowers/plans/2026-08-03-ui-shell-core-loop.md` — a Weight screen (log a weigh-in, see history, see the smoothed trend) and a Coach screen (expenditure estimate + weekly check-in) — and wire them into the app via a bottom navigation bar alongside the existing Daily Log screen.
 
-**Architecture:** Two new screens, each with its own `ViewModel`, calling directly into the already-built and already-reviewed `WeightRepository`, `TrendRepository`, `ExpenditureRepository`, `CheckInRepository` (no new domain logic — everything these screens need already exists). `MacroTrackNavHost` gains a bottom `NavigationBar` with three top-level destinations (Daily Log, Weight, Coach); Food Search and Add Log Entry remain reached only via Daily Log's FAB, not part of the bottom nav.
+**Architecture:** Two new screens, each with its own `ViewModel`, calling directly into the already-built and already-reviewed `WeightRepository`, `TrendRepository`, `ExpenditureRepository`, `CheckInRepository` (no new domain logic — everything these screens need already exists). `MacroPlusNavHost` gains a bottom `NavigationBar` with three top-level destinations (Daily Log, Weight, Coach); Food Search and Add Log Entry remain reached only via Daily Log's FAB, not part of the bottom nav.
 
 **Tech Stack:** Kotlin, Jetpack Compose (Material3), `androidx.navigation:navigation-compose` (already a dependency, no version change), no new Gradle dependencies.
 
@@ -12,14 +12,14 @@
 
 - **This sandbox has no Android SDK and no emulator, exactly as in the prior UI plan.** Every task's verification step is static code review only — say so explicitly in every task's report, never claim a compile or run that didn't happen.
 - Every `ViewModel` repository call runs inside `viewModelScope.launch { }`, wrapped in `try { ... } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { ... }` — rethrow `CancellationException` before catching `Exception`, exactly the pattern already used in `DailyLogViewModel`/`AuthViewModel`/`FoodSearchViewModel`/`AddLogEntryViewModel` (this was a real, fixed bug in the prior plan; do not reintroduce the old bare-`catch(Exception)` pattern here).
-- Construct every screen's `ViewModel` via `viewModel(factory = viewModelFactory { initializer { ... } })` inside its `composable { }` block in `MacroTrackNavHost.kt` — never a raw constructor call directly in a composable body. Import `viewModelFactory` and `initializer` from **`androidx.lifecycle.viewmodel`** (not `androidx.lifecycle.viewmodel.compose` — that wrong import path was a real Critical bug caught and fixed in the prior plan's final review; `viewModel` itself is imported from `androidx.lifecycle.viewmodel.compose.viewModel`).
+- Construct every screen's `ViewModel` via `viewModel(factory = viewModelFactory { initializer { ... } })` inside its `composable { }` block in `MacroPlusNavHost.kt` — never a raw constructor call directly in a composable body. Import `viewModelFactory` and `initializer` from **`androidx.lifecycle.viewmodel`** (not `androidx.lifecycle.viewmodel.compose` — that wrong import path was a real Critical bug caught and fixed in the prior plan's final review; `viewModel` itself is imported from `androidx.lifecycle.viewmodel.compose.viewModel`).
 - `CheckInRepository.recomputeCheckIn` requires a caller-supplied `targetRateKgPerWeek` (no `macro_programs` source exists — see `docs/WEEKLY_CHECKIN_GAPS.md`'s "no real source for `targetRateKgPerWeek`"). The Coach screen must expose a visible, user-adjustable control for this (a `Slider`, range −1.0..1.0 kg/week, default `0.0` = "maintaining") — never a hardcoded silent default passed straight to the repository without the user seeing/choosing it.
 - `CheckInRepository.recomputeCheckIn` throws `IllegalStateException` if the user has never logged a weigh-in (`docs/WEEKLY_CHECKIN_GAPS.md`: "requires at least one weigh-in"). The Coach screen must catch this specific case and render a calm "log a weigh-in first" empty state with a button that navigates to the Weight screen — never let it crash the screen or show as a raw error message.
 - `ExpenditureEstimate.state == "holding"` and `PersistedCheckIn.status == "held"` are valid, expected states — render them calmly and informatively (CLAUDE.md: "missing-data holding is a valid state and must be visible in the UI"), never as an error or a blank/zero value.
 - Per `docs/WEEKLY_CHECKIN_GAPS.md`'s "`weekStart`/`weekEnd` are row labels only" gap: `recomputeCheckIn`'s actual computation always uses today's data regardless of what week is passed in, so the exact week-boundary convention chosen here only affects which row a check-in is filed under, not the numbers it computes. This plan uses "the most recent Monday through the following Sunday" (device-local) as that row-labelling convention — document this as the deliberate simplification it is, not a precise computation window.
 - `WeightRepository.listEntries`/`TrendRepository.recomputeTrend` have no built-in row cap (`docs/WEIGHT_LOGGING_GAPS.md`: "no row limit"). This plan bounds every fetch to a 90-day `since` window (`Instant.now().minus(90, ChronoUnit.DAYS)`) to keep the Weight screen's history/sparkline fetch small and bounded — a deliberate scope choice for this plan, not a fix to the underlying repository gap, which remains open.
 - Do not add any new icon-pack dependency or `Icons.Filled.*` constant beyond `Icons.Filled.Add` (already used, and already flagged in the prior plan's docs as an unverified transitive-dependency assumption — see `docs/superpowers/plans/2026-08-03-ui-shell-core-loop.md`'s Task 5 note). The new bottom `NavigationBar`'s `icon` slot in this plan uses plain `Text`, not an `ImageVector`, specifically to avoid inheriting that same unverified-dependency risk a second time.
-- Follow existing package conventions: new screens under `app/src/main/java/com/macrotrack/app/ui/weight/` and `app/src/main/java/com/macrotrack/app/ui/coach/`. Every screen gets a real `@Preview` composable with hand-written fake repositories (the pattern already proven working in `DailyLogScreen.kt`'s `PreviewLogRepository`/`PreviewDayStatusRepository`/`PreviewAuthRepository`) — both repository surfaces touched by this plan (`WeightRepository`+`TrendRepository`, `ExpenditureRepository`+`CheckInRepository`) are small enough (3-4 methods each) that a full preview is achievable, unlike Food Search/Add Log Entry's larger 4-5 repository surface which got a documented deferral instead.
+- Follow existing package conventions: new screens under `app/src/main/java/com/macroplus/app/ui/weight/` and `app/src/main/java/com/macroplus/app/ui/coach/`. Every screen gets a real `@Preview` composable with hand-written fake repositories (the pattern already proven working in `DailyLogScreen.kt`'s `PreviewLogRepository`/`PreviewDayStatusRepository`/`PreviewAuthRepository`) — both repository surfaces touched by this plan (`WeightRepository`+`TrendRepository`, `ExpenditureRepository`+`CheckInRepository`) are small enough (3-4 methods each) that a full preview is achievable, unlike Food Search/Add Log Entry's larger 4-5 repository surface which got a documented deferral instead.
 - Out of scope: barcode camera, OCR/URL/speech/image adapters, `macro_programs` UI (a real goal-rate source, editing/deleting weigh-ins beyond what already exists on `WeightRepository`), any chart library dependency (the trend visual is a small hand-rolled `Canvas` sparkline, matching the "prefer a simple custom Canvas-based sparkline over pulling in a new dependency" direction from this app's original concept mockup), notifications/reminders to check in.
 
 ---
@@ -27,19 +27,19 @@
 ### Task 1: Bottom navigation + forward-referenced routes
 
 **Files:**
-- Modify: `app/src/main/java/com/macrotrack/app/ui/nav/Destinations.kt`
-- Modify: `app/src/main/java/com/macrotrack/app/ui/nav/MacroTrackNavHost.kt`
+- Modify: `app/src/main/java/com/macroplus/app/ui/nav/Destinations.kt`
+- Modify: `app/src/main/java/com/macroplus/app/ui/nav/MacroPlusNavHost.kt`
 
 **Interfaces:**
 - Consumes: `WeightRepository`/`TrendRepository`/`ExpenditureRepository`/`CheckInRepository` (already exist on `AppContainer`, unmodified by this plan). References `WeightScreen`/`WeightViewModel` (Task 2) and `CoachScreen`/`CoachViewModel` (Task 3) by name only — those files don't exist yet when this task is implemented, so this file will not compile stand-alone until Tasks 2-3 land. That's expected, matching exactly how the prior plan's Task 3 forward-referenced Tasks 4-7; note this in the report rather than treating it as a defect.
-- Produces: `Destinations.WEIGHT = "weight"`, `Destinations.COACH = "coach"` route constants. `MacroTrackNavHost` gains a bottom `NavigationBar` shown only on the three top-level routes (`DAILY_LOG`, `WEIGHT`, `COACH`), hidden on `FOOD_SEARCH`/`ADD_LOG_ENTRY_PATTERN`.
+- Produces: `Destinations.WEIGHT = "weight"`, `Destinations.COACH = "coach"` route constants. `MacroPlusNavHost` gains a bottom `NavigationBar` shown only on the three top-level routes (`DAILY_LOG`, `WEIGHT`, `COACH`), hidden on `FOOD_SEARCH`/`ADD_LOG_ENTRY_PATTERN`.
 
 - [ ] **Step 1: Add the two route constants**
 
-Modify `app/src/main/java/com/macrotrack/app/ui/nav/Destinations.kt` — add two lines inside the `object Destinations` block, alongside the existing three:
+Modify `app/src/main/java/com/macroplus/app/ui/nav/Destinations.kt` — add two lines inside the `object Destinations` block, alongside the existing three:
 
 ```kotlin
-package com.macrotrack.app.ui.nav
+package com.macroplus.app.ui.nav
 
 object Destinations {
     const val AUTH = "auth"
@@ -51,17 +51,17 @@ object Destinations {
     private const val ADD_LOG_ENTRY_BASE = "add_log_entry"
     const val ADD_LOG_ENTRY_PATTERN = "$ADD_LOG_ENTRY_BASE/{entryKind}/{id}"
 
-    /** `entryKind` is one of `EntryKind.FOOD`/`CUSTOM_FOOD`/`RECIPE` (com.macrotrack.app.data.model.EntryKind). */
+    /** `entryKind` is one of `EntryKind.FOOD`/`CUSTOM_FOOD`/`RECIPE` (com.macroplus.app.data.model.EntryKind). */
     fun addLogEntryRoute(entryKind: String, id: String): String = "$ADD_LOG_ENTRY_BASE/$entryKind/$id"
 }
 ```
 
-- [ ] **Step 2: Rewrite MacroTrackNavHost.kt to add the bottom nav bar and the two new routes**
+- [ ] **Step 2: Rewrite MacroPlusNavHost.kt to add the bottom nav bar and the two new routes**
 
-Replace the full contents of `app/src/main/java/com/macrotrack/app/ui/nav/MacroTrackNavHost.kt`:
+Replace the full contents of `app/src/main/java/com/macroplus/app/ui/nav/MacroPlusNavHost.kt`:
 
 ```kotlin
-package com.macrotrack.app.ui.nav
+package com.macroplus.app.ui.nav
 
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -87,19 +87,19 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
-import com.macrotrack.app.data.AppContainer
-import com.macrotrack.app.ui.auth.AuthScreen
-import com.macrotrack.app.ui.auth.AuthViewModel
-import com.macrotrack.app.ui.coach.CoachScreen
-import com.macrotrack.app.ui.coach.CoachViewModel
-import com.macrotrack.app.ui.dailylog.DailyLogScreen
-import com.macrotrack.app.ui.dailylog.DailyLogViewModel
-import com.macrotrack.app.ui.search.AddLogEntryScreen
-import com.macrotrack.app.ui.search.AddLogEntryViewModel
-import com.macrotrack.app.ui.search.FoodSearchScreen
-import com.macrotrack.app.ui.search.FoodSearchViewModel
-import com.macrotrack.app.ui.weight.WeightScreen
-import com.macrotrack.app.ui.weight.WeightViewModel
+import com.macroplus.app.data.AppContainer
+import com.macroplus.app.ui.auth.AuthScreen
+import com.macroplus.app.ui.auth.AuthViewModel
+import com.macroplus.app.ui.coach.CoachScreen
+import com.macroplus.app.ui.coach.CoachViewModel
+import com.macroplus.app.ui.dailylog.DailyLogScreen
+import com.macroplus.app.ui.dailylog.DailyLogViewModel
+import com.macroplus.app.ui.search.AddLogEntryScreen
+import com.macroplus.app.ui.search.AddLogEntryViewModel
+import com.macroplus.app.ui.search.FoodSearchScreen
+import com.macroplus.app.ui.search.FoodSearchViewModel
+import com.macroplus.app.ui.weight.WeightScreen
+import com.macroplus.app.ui.weight.WeightViewModel
 import io.github.jan.supabase.auth.status.SessionStatus
 
 private data class BottomNavItem(val route: String, val label: String)
@@ -111,7 +111,7 @@ private val BOTTOM_NAV_ITEMS = listOf(
 )
 
 @Composable
-fun MacroTrackNavHost(appContainer: AppContainer) {
+fun MacroPlusNavHost(appContainer: AppContainer) {
     // First touch of appContainer.authRepository forces SupabaseClientProvider.create(), which
     // performs a synchronous `check(...)` on config values (SUPABASE_URL / SUPABASE_PUBLISHABLE_KEY)
     // and throws if they're missing. That's not a coroutine/suspend call, so this is a plain
@@ -290,12 +290,12 @@ Note: the inner `backStackEntry` parameter of the `ADD_LOG_ENTRY_PATTERN` compos
 
 - [ ] **Step 3: Static review (no compile possible in this sandbox)**
 
-Confirm `Destinations.WEIGHT`/`Destinations.COACH` are spelled identically everywhere they're referenced in the rewritten `MacroTrackNavHost.kt`. Confirm the bottom `NavigationBar`'s `onClick`/`selected` logic reads `currentRoute` (from `currentBackStackEntryAsState()`), not some stale captured value. Confirm `WeightViewModel`'s and `CoachViewModel`'s constructor calls here use the exact parameter names Tasks 2 and 3 will produce (`weightRepository`/`trendRepository` and `expenditureRepository`/`checkInRepository` respectively) — this task is written first, so it is the source of truth Tasks 2-3 must match, not the other way around; note this explicitly in the report. Confirm `appContainer.weightRepository`/`appContainer.trendRepository`/`appContainer.expenditureRepository`/`appContainer.checkInRepository` are real property names by reading the actual current `app/src/main/java/com/macrotrack/app/data/AppContainer.kt`. State explicitly that this file cannot compile stand-alone until Tasks 2-3 land (missing `WeightScreen`/`WeightViewModel`/`CoachScreen`/`CoachViewModel`), and that this is expected, not a defect.
+Confirm `Destinations.WEIGHT`/`Destinations.COACH` are spelled identically everywhere they're referenced in the rewritten `MacroPlusNavHost.kt`. Confirm the bottom `NavigationBar`'s `onClick`/`selected` logic reads `currentRoute` (from `currentBackStackEntryAsState()`), not some stale captured value. Confirm `WeightViewModel`'s and `CoachViewModel`'s constructor calls here use the exact parameter names Tasks 2 and 3 will produce (`weightRepository`/`trendRepository` and `expenditureRepository`/`checkInRepository` respectively) — this task is written first, so it is the source of truth Tasks 2-3 must match, not the other way around; note this explicitly in the report. Confirm `appContainer.weightRepository`/`appContainer.trendRepository`/`appContainer.expenditureRepository`/`appContainer.checkInRepository` are real property names by reading the actual current `app/src/main/java/com/macroplus/app/data/AppContainer.kt`. State explicitly that this file cannot compile stand-alone until Tasks 2-3 land (missing `WeightScreen`/`WeightViewModel`/`CoachScreen`/`CoachViewModel`), and that this is expected, not a defect.
 
 - [ ] **Step 4: Commit**
 
 ```bash
-git add app/src/main/java/com/macrotrack/app/ui/nav/
+git add app/src/main/java/com/macroplus/app/ui/nav/
 git commit -m "feat: add bottom navigation with Weight and Coach routes"
 ```
 
@@ -304,26 +304,26 @@ git commit -m "feat: add bottom navigation with Weight and Coach routes"
 ### Task 2: Weight screen
 
 **Files:**
-- Create: `app/src/main/java/com/macrotrack/app/ui/weight/WeightViewModel.kt`
-- Create: `app/src/main/java/com/macrotrack/app/ui/weight/WeightScreen.kt`
+- Create: `app/src/main/java/com/macroplus/app/ui/weight/WeightViewModel.kt`
+- Create: `app/src/main/java/com/macroplus/app/ui/weight/WeightScreen.kt`
 
 **Interfaces:**
-- Consumes: `WeightRepository.listEntries(since: Instant): List<WeightEntry>`, `WeightRepository.logWeight(measuredAt: Instant, weightKg: Double, source: String = "manual", note: String? = null): WeightEntry` (throws `IllegalArgumentException` if `weightKg !in 20.0..500.0`), `WeightRepository.deleteEntry(entryId: String)`, `TrendRepository.recomputeTrend(since: Instant): List<TrendPoint>` (all already exist, `app/src/main/java/com/macrotrack/app/data/`). `WeightEntry` fields: `id`, `measuredAt` (String, ISO instant), `weightKg`. `TrendPoint` fields: `trendDate` (String), `trendWeightKg` (Double).
+- Consumes: `WeightRepository.listEntries(since: Instant): List<WeightEntry>`, `WeightRepository.logWeight(measuredAt: Instant, weightKg: Double, source: String = "manual", note: String? = null): WeightEntry` (throws `IllegalArgumentException` if `weightKg !in 20.0..500.0`), `WeightRepository.deleteEntry(entryId: String)`, `TrendRepository.recomputeTrend(since: Instant): List<TrendPoint>` (all already exist, `app/src/main/java/com/macroplus/app/data/`). `WeightEntry` fields: `id`, `measuredAt` (String, ISO instant), `weightKg`. `TrendPoint` fields: `trendDate` (String), `trendWeightKg` (Double).
 - Produces: `class WeightViewModel(weightRepository: WeightRepository, trendRepository: TrendRepository) : ViewModel()` with `StateFlow<WeightUiState>` named `uiState`, `fun refresh()`, `fun onWeightInputChanged(text: String)`, `fun logWeight()`, `fun deleteEntry(entryId: String)`. `@Composable fun WeightScreen(viewModel: WeightViewModel)`. Task 1's nav host already constructs this ViewModel and calls this Composable with these exact names — must match.
 
 - [ ] **Step 1: Write the ViewModel**
 
-Create `app/src/main/java/com/macrotrack/app/ui/weight/WeightViewModel.kt`:
+Create `app/src/main/java/com/macroplus/app/ui/weight/WeightViewModel.kt`:
 
 ```kotlin
-package com.macrotrack.app.ui.weight
+package com.macroplus.app.ui.weight
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.macrotrack.app.data.TrendRepository
-import com.macrotrack.app.data.WeightRepository
-import com.macrotrack.app.data.model.TrendPoint
-import com.macrotrack.app.data.model.WeightEntry
+import com.macroplus.app.data.TrendRepository
+import com.macroplus.app.data.WeightRepository
+import com.macroplus.app.data.model.TrendPoint
+import com.macroplus.app.data.model.WeightEntry
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -419,10 +419,10 @@ class WeightViewModel(
 
 - [ ] **Step 2: Write the screen**
 
-Create `app/src/main/java/com/macrotrack/app/ui/weight/WeightScreen.kt`:
+Create `app/src/main/java/com/macroplus/app/ui/weight/WeightScreen.kt`:
 
 ```kotlin
-package com.macrotrack.app.ui.weight
+package com.macroplus.app.ui.weight
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
@@ -454,11 +454,11 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
-import com.macrotrack.app.data.TrendRepository
-import com.macrotrack.app.data.WeightRepository
-import com.macrotrack.app.data.model.TrendPoint
-import com.macrotrack.app.data.model.WeightEntry
-import com.macrotrack.app.ui.theme.MacroTrackTheme
+import com.macroplus.app.data.TrendRepository
+import com.macroplus.app.data.WeightRepository
+import com.macroplus.app.data.model.TrendPoint
+import com.macroplus.app.data.model.WeightEntry
+import com.macroplus.app.ui.theme.MacroPlusTheme
 import java.time.Instant
 
 @Composable
@@ -466,7 +466,7 @@ fun WeightScreen(viewModel: WeightViewModel) {
     val uiState by viewModel.uiState.collectAsState()
 
     // Same resume-based refresh pattern as DailyLogScreen -- this ViewModel is scoped to its
-    // NavBackStackEntry (see MacroTrackNavHost), so re-entering this tab after logging weight
+    // NavBackStackEntry (see MacroPlusNavHost), so re-entering this tab after logging weight
     // elsewhere (or after time has passed) needs an explicit trigger, not just init{}.
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner, viewModel) {
@@ -589,7 +589,7 @@ private fun WeightScreenPreview() {
         TrendPoint(userId = "preview-user", trendDate = "2026-08-02", trendWeightKg = 82.3, method = "ewma_reference", sourceWindowDays = 14, createdAt = "2026-08-02T07:00:00Z"),
         TrendPoint(userId = "preview-user", trendDate = "2026-08-03", trendWeightKg = 82.1, method = "ewma_reference", sourceWindowDays = 14, createdAt = "2026-08-03T07:00:00Z"),
     )
-    MacroTrackTheme {
+    MacroPlusTheme {
         WeightScreen(
             viewModel = WeightViewModel(
                 weightRepository = PreviewWeightRepository(fakeEntries),
@@ -604,12 +604,12 @@ Note on `TextAlign` import: it's listed but unused in this draft — remove that
 
 - [ ] **Step 3: Static review (no compile possible in this sandbox)**
 
-Confirm `WeightEntry`/`TrendPoint` field names (`id`, `measuredAt`, `weightKg`; `trendDate`, `trendWeightKg`) match `app/src/main/java/com/macrotrack/app/data/model/WeightModels.kt`/`WeightTrendModels.kt` exactly by reading those files directly. Confirm `WeightRepository`/`TrendRepository`'s method signatures used here (`listEntries`, `logWeight`, `deleteEntry`, `recomputeTrend`) match `app/src/main/java/com/macrotrack/app/data/WeightRepository.kt`/`TrendRepository.kt` exactly. Confirm `WeightViewModel`'s constructor and `WeightScreen`'s composable signature match Task 1's nav host construction site exactly (`weightRepository`/`trendRepository` parameter names, `WeightScreen(viewModel: WeightViewModel)` with no other parameters). Remove the unused `TextAlign` import if present. State explicitly that no compile was possible.
+Confirm `WeightEntry`/`TrendPoint` field names (`id`, `measuredAt`, `weightKg`; `trendDate`, `trendWeightKg`) match `app/src/main/java/com/macroplus/app/data/model/WeightModels.kt`/`WeightTrendModels.kt` exactly by reading those files directly. Confirm `WeightRepository`/`TrendRepository`'s method signatures used here (`listEntries`, `logWeight`, `deleteEntry`, `recomputeTrend`) match `app/src/main/java/com/macroplus/app/data/WeightRepository.kt`/`TrendRepository.kt` exactly. Confirm `WeightViewModel`'s constructor and `WeightScreen`'s composable signature match Task 1's nav host construction site exactly (`weightRepository`/`trendRepository` parameter names, `WeightScreen(viewModel: WeightViewModel)` with no other parameters). Remove the unused `TextAlign` import if present. State explicitly that no compile was possible.
 
 - [ ] **Step 4: Commit**
 
 ```bash
-git add app/src/main/java/com/macrotrack/app/ui/weight/
+git add app/src/main/java/com/macroplus/app/ui/weight/
 git commit -m "feat: add WeightScreen with logging, history, and a trend sparkline"
 ```
 
@@ -618,26 +618,26 @@ git commit -m "feat: add WeightScreen with logging, history, and a trend sparkli
 ### Task 3: Coach screen
 
 **Files:**
-- Create: `app/src/main/java/com/macrotrack/app/ui/coach/CoachViewModel.kt`
-- Create: `app/src/main/java/com/macrotrack/app/ui/coach/CoachScreen.kt`
+- Create: `app/src/main/java/com/macroplus/app/ui/coach/CoachViewModel.kt`
+- Create: `app/src/main/java/com/macroplus/app/ui/coach/CoachScreen.kt`
 
 **Interfaces:**
-- Consumes: `ExpenditureRepository.recomputeExpenditure(): ExpenditureEstimate`, `CheckInRepository.getCheckIn(weekStart: LocalDate): PersistedCheckIn?`, `CheckInRepository.recomputeCheckIn(weekStart: LocalDate, weekEnd: LocalDate, targetRateKgPerWeek: Double, proteinGPerKg: Double = ..., fatGPerKg: Double = ...): CheckInResult` (throws `IllegalStateException` if no weigh-in exists), `CheckInRepository.resolve(weekStart: LocalDate, accepted: Boolean): PersistedCheckIn` (all already exist, `app/src/main/java/com/macrotrack/app/data/`). `ExpenditureEstimate` fields: `state`, `confidence`, `estimateKcal: Double?`, `explanation`. `PersistedCheckIn` fields: `status`, `explanation`, `proposedCalories: Double?`, `proposedProteinG: Double?`, `proposedCarbsG: Double?`, `proposedFatG: Double?`.
+- Consumes: `ExpenditureRepository.recomputeExpenditure(): ExpenditureEstimate`, `CheckInRepository.getCheckIn(weekStart: LocalDate): PersistedCheckIn?`, `CheckInRepository.recomputeCheckIn(weekStart: LocalDate, weekEnd: LocalDate, targetRateKgPerWeek: Double, proteinGPerKg: Double = ..., fatGPerKg: Double = ...): CheckInResult` (throws `IllegalStateException` if no weigh-in exists), `CheckInRepository.resolve(weekStart: LocalDate, accepted: Boolean): PersistedCheckIn` (all already exist, `app/src/main/java/com/macroplus/app/data/`). `ExpenditureEstimate` fields: `state`, `confidence`, `estimateKcal: Double?`, `explanation`. `PersistedCheckIn` fields: `status`, `explanation`, `proposedCalories: Double?`, `proposedProteinG: Double?`, `proposedCarbsG: Double?`, `proposedFatG: Double?`.
 - Produces: `class CoachViewModel(expenditureRepository: ExpenditureRepository, checkInRepository: CheckInRepository) : ViewModel()` with `StateFlow<CoachUiState>` named `uiState`, `fun refresh()`, `fun onTargetRateChanged(rate: Double)`, `fun checkIn()`, `fun resolve(accepted: Boolean)`. `@Composable fun CoachScreen(viewModel: CoachViewModel, onLogWeight: () -> Unit)`. Task 1's nav host already constructs this ViewModel and calls this Composable with these exact names — must match.
 
 - [ ] **Step 1: Write the ViewModel**
 
-Create `app/src/main/java/com/macrotrack/app/ui/coach/CoachViewModel.kt`:
+Create `app/src/main/java/com/macroplus/app/ui/coach/CoachViewModel.kt`:
 
 ```kotlin
-package com.macrotrack.app.ui.coach
+package com.macroplus.app.ui.coach
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.macrotrack.app.data.CheckInRepository
-import com.macrotrack.app.data.ExpenditureRepository
-import com.macrotrack.app.data.model.PersistedCheckIn
-import com.macrotrack.app.domain.ExpenditureEstimate
+import com.macroplus.app.data.CheckInRepository
+import com.macroplus.app.data.ExpenditureRepository
+import com.macroplus.app.data.model.PersistedCheckIn
+import com.macroplus.app.domain.ExpenditureEstimate
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -741,10 +741,10 @@ class CoachViewModel(
 
 - [ ] **Step 2: Write the screen**
 
-Create `app/src/main/java/com/macrotrack/app/ui/coach/CoachScreen.kt`:
+Create `app/src/main/java/com/macroplus/app/ui/coach/CoachScreen.kt`:
 
 ```kotlin
-package com.macrotrack.app.ui.coach
+package com.macroplus.app.ui.coach
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -767,12 +767,12 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
-import com.macrotrack.app.data.CheckInRepository
-import com.macrotrack.app.data.ExpenditureRepository
-import com.macrotrack.app.data.model.CheckInModuleDto
-import com.macrotrack.app.data.model.PersistedCheckIn
-import com.macrotrack.app.domain.ExpenditureEstimate
-import com.macrotrack.app.ui.theme.MacroTrackTheme
+import com.macroplus.app.data.CheckInRepository
+import com.macroplus.app.data.ExpenditureRepository
+import com.macroplus.app.data.model.CheckInModuleDto
+import com.macroplus.app.data.model.PersistedCheckIn
+import com.macroplus.app.domain.ExpenditureEstimate
+import com.macroplus.app.ui.theme.MacroPlusTheme
 import java.time.LocalDate
 
 @Composable
@@ -944,7 +944,7 @@ private fun CoachScreenPreview() {
         explanation = "Your estimate has stabilised -- here's an updated target.",
         createdAt = "2026-08-03T08:00:00Z",
     )
-    MacroTrackTheme {
+    MacroPlusTheme {
         CoachScreen(
             viewModel = CoachViewModel(
                 expenditureRepository = PreviewExpenditureRepository(fakeEstimate),
@@ -958,12 +958,12 @@ private fun CoachScreenPreview() {
 
 - [ ] **Step 3: Static review (no compile possible in this sandbox)**
 
-Confirm `ExpenditureEstimate`/`PersistedCheckIn` field names used here match `app/src/main/java/com/macrotrack/app/domain/AdaptiveEngineModels.kt`/`app/src/main/java/com/macrotrack/app/data/model/CheckInModels.kt` exactly by reading those files directly. Confirm `ExpenditureRepository`/`CheckInRepository`'s method signatures used here match `app/src/main/java/com/macrotrack/app/data/ExpenditureRepository.kt`/`CheckInRepository.kt` exactly, including `recomputeCheckIn`'s parameter names/order and its two defaulted trailing parameters (`proteinGPerKg`/`fatGPerKg`, left at their defaults here since this plan has no protein/fat-preference UI). Confirm the two preview fake classes correctly implement every member of `ExpenditureRepository`/`CheckInRepository` (the interfaces this plan didn't modify) — a fake missing an override is exactly the class of error that would only be caught by a real compiler, so read both interfaces side-by-side against the fakes line by line. Confirm `CoachViewModel`'s constructor and `CoachScreen`'s composable signature match Task 1's nav host construction site exactly (`expenditureRepository`/`checkInRepository` parameter names, `CoachScreen(viewModel, onLogWeight)`). State explicitly that no compile was possible.
+Confirm `ExpenditureEstimate`/`PersistedCheckIn` field names used here match `app/src/main/java/com/macroplus/app/domain/AdaptiveEngineModels.kt`/`app/src/main/java/com/macroplus/app/data/model/CheckInModels.kt` exactly by reading those files directly. Confirm `ExpenditureRepository`/`CheckInRepository`'s method signatures used here match `app/src/main/java/com/macroplus/app/data/ExpenditureRepository.kt`/`CheckInRepository.kt` exactly, including `recomputeCheckIn`'s parameter names/order and its two defaulted trailing parameters (`proteinGPerKg`/`fatGPerKg`, left at their defaults here since this plan has no protein/fat-preference UI). Confirm the two preview fake classes correctly implement every member of `ExpenditureRepository`/`CheckInRepository` (the interfaces this plan didn't modify) — a fake missing an override is exactly the class of error that would only be caught by a real compiler, so read both interfaces side-by-side against the fakes line by line. Confirm `CoachViewModel`'s constructor and `CoachScreen`'s composable signature match Task 1's nav host construction site exactly (`expenditureRepository`/`checkInRepository` parameter names, `CoachScreen(viewModel, onLogWeight)`). State explicitly that no compile was possible.
 
 - [ ] **Step 4: Commit**
 
 ```bash
-git add app/src/main/java/com/macrotrack/app/ui/coach/
+git add app/src/main/java/com/macroplus/app/ui/coach/
 git commit -m "feat: add CoachScreen with expenditure estimate and weekly check-in"
 ```
 

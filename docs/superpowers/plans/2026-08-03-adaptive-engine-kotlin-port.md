@@ -15,7 +15,7 @@
 - **Rounding must match Python's `round(x, n)` exactly**: Python rounds half-to-even on the float's exact IEEE754 binary value. In Kotlin, use `java.math.BigDecimal(value)` — the exact-binary-value constructor, **not** `BigDecimal.valueOf(value)`, which goes through `Double.toString()` first and would round differently — with `.setScale(n, RoundingMode.HALF_EVEN).toDouble()`. This reproduces Python's rounding quirks too (e.g. `round(2.675, 2) == 2.67`), because both languages end up rounding the identical underlying double.
 - A declared fast is countable only when the caller explicitly stores zero calories — `nutritionIsCountable` must preserve this exactly (already the existing rule from the daily-logger slice; this port is what will eventually consume it).
 - The `EngineConfig`/macro-default values (7700 kcal/kg, 0.20 EWMA alpha, 100 kcal damping cap, Mifflin-St Jeor/Katch-McArdle BMR, 1.8/0.8 g/kg protein/fat defaults) are this repository's explicit product parameters, not validated reconstructions of any third-party app's private values — see `docs/ADAPTIVE_ENGINE_CONTRACT.md`.
-- The existing `app/src/main/java/com/macrotrack/app/domain/AdaptiveNutrition.kt` and its test are an old partial stub predating this port (missing coverage gating, holding states, confidence tiers, the `DailyRecord`/weekly-check-in structure entirely). **Delete both** as part of Task 1 — they are superseded, not supplemented.
+- The existing `app/src/main/java/com/macroplus/app/domain/AdaptiveNutrition.kt` and its test are an old partial stub predating this port (missing coverage gating, holding states, confidence tiers, the `DailyRecord`/weekly-check-in structure entirely). **Delete both** as part of Task 1 — they are superseded, not supplemented.
 - minSdk is 26 — `java.time.LocalDate`/`ChronoUnit` are usable directly, no desugaring needed.
 
 ---
@@ -23,14 +23,14 @@
 ## File Structure
 
 ```
-app/src/main/java/com/macrotrack/app/domain/
+app/src/main/java/com/macroplus/app/domain/
   AdaptiveNutrition.kt           # DELETE (old stub, superseded)
   Rounding.kt                    # NEW — round1/round4, Python-compatible rounding
   AdaptiveEngineModels.kt        # NEW — EngineConfig, DailyRecord, ExpenditureEstimate
   AdaptiveEngine.kt              # NEW — nutritionIsCountable, weightTrend, estimateExpenditure
   MacroTargeting.kt              # NEW — MacroTargets, initialExpenditureKcal, calorieTarget, macroTargets
   WeeklyCheckIn.kt               # NEW — CheckInModule, CheckInResult, weeklyCheckIn
-app/src/test/java/com/macrotrack/app/domain/
+app/src/test/java/com/macroplus/app/domain/
   AdaptiveNutritionTest.kt       # DELETE (old stub test, superseded)
   RoundingTest.kt                # NEW
   AdaptiveEngineModelsTest.kt    # NEW
@@ -44,12 +44,12 @@ app/src/test/java/com/macrotrack/app/domain/
 ### Task 1: Rounding + models, delete the old stub
 
 **Files:**
-- Delete: `app/src/main/java/com/macrotrack/app/domain/AdaptiveNutrition.kt`
-- Delete: `app/src/test/java/com/macrotrack/app/domain/AdaptiveNutritionTest.kt`
-- Create: `app/src/main/java/com/macrotrack/app/domain/Rounding.kt`
-- Create: `app/src/main/java/com/macrotrack/app/domain/AdaptiveEngineModels.kt`
-- Test: `app/src/test/java/com/macrotrack/app/domain/RoundingTest.kt`
-- Test: `app/src/test/java/com/macrotrack/app/domain/AdaptiveEngineModelsTest.kt`
+- Delete: `app/src/main/java/com/macroplus/app/domain/AdaptiveNutrition.kt`
+- Delete: `app/src/test/java/com/macroplus/app/domain/AdaptiveNutritionTest.kt`
+- Create: `app/src/main/java/com/macroplus/app/domain/Rounding.kt`
+- Create: `app/src/main/java/com/macroplus/app/domain/AdaptiveEngineModels.kt`
+- Test: `app/src/test/java/com/macroplus/app/domain/RoundingTest.kt`
+- Test: `app/src/test/java/com/macroplus/app/domain/AdaptiveEngineModelsTest.kt`
 
 **Interfaces:**
 - Consumes: nothing (leaf task)
@@ -58,14 +58,14 @@ app/src/test/java/com/macrotrack/app/domain/
 - [ ] **Step 1: Delete the old stub files**
 
 ```bash
-git rm app/src/main/java/com/macrotrack/app/domain/AdaptiveNutrition.kt
-git rm app/src/test/java/com/macrotrack/app/domain/AdaptiveNutritionTest.kt
+git rm app/src/main/java/com/macroplus/app/domain/AdaptiveNutrition.kt
+git rm app/src/test/java/com/macroplus/app/domain/AdaptiveNutritionTest.kt
 ```
 
 - [ ] **Step 2: Write the failing rounding test**
 
 ```kotlin
-package com.macrotrack.app.domain
+package com.macroplus.app.domain
 
 import org.junit.Assert.assertEquals
 import org.junit.Test
@@ -97,13 +97,13 @@ class RoundingTest {
 
 - [ ] **Step 3: Run test to verify it fails**
 
-Run: `./gradlew :app:testDebugUnitTest --tests "com.macrotrack.app.domain.RoundingTest"`
+Run: `./gradlew :app:testDebugUnitTest --tests "com.macroplus.app.domain.RoundingTest"`
 Expected: FAIL — `round1`/`round4` unresolved.
 
 - [ ] **Step 4: Write Rounding.kt**
 
 ```kotlin
-package com.macrotrack.app.domain
+package com.macroplus.app.domain
 
 import java.math.BigDecimal
 import java.math.RoundingMode
@@ -123,13 +123,13 @@ internal fun round4(value: Double): Double = BigDecimal(value).setScale(4, Round
 
 - [ ] **Step 5: Run test to verify it passes**
 
-Run: `./gradlew :app:testDebugUnitTest --tests "com.macrotrack.app.domain.RoundingTest"`
+Run: `./gradlew :app:testDebugUnitTest --tests "com.macroplus.app.domain.RoundingTest"`
 Expected: PASS (3 tests)
 
 - [ ] **Step 6: Write the failing models test**
 
 ```kotlin
-package com.macrotrack.app.domain
+package com.macroplus.app.domain
 
 import org.junit.Assert.assertEquals
 import org.junit.Test
@@ -164,13 +164,13 @@ class AdaptiveEngineModelsTest {
 
 - [ ] **Step 7: Run test to verify it fails**
 
-Run: `./gradlew :app:testDebugUnitTest --tests "com.macrotrack.app.domain.AdaptiveEngineModelsTest"`
+Run: `./gradlew :app:testDebugUnitTest --tests "com.macroplus.app.domain.AdaptiveEngineModelsTest"`
 Expected: FAIL — `EngineConfig`/`DailyRecord` unresolved.
 
 - [ ] **Step 8: Write AdaptiveEngineModels.kt**
 
 ```kotlin
-package com.macrotrack.app.domain
+package com.macroplus.app.domain
 
 import java.time.LocalDate
 
@@ -230,16 +230,16 @@ data class ExpenditureEstimate(
 
 - [ ] **Step 9: Run test to verify it passes**
 
-Run: `./gradlew :app:testDebugUnitTest --tests "com.macrotrack.app.domain.AdaptiveEngineModelsTest"`
+Run: `./gradlew :app:testDebugUnitTest --tests "com.macroplus.app.domain.AdaptiveEngineModelsTest"`
 Expected: PASS (2 tests)
 
 - [ ] **Step 10: Commit**
 
 ```bash
-git add app/src/main/java/com/macrotrack/app/domain/Rounding.kt \
-        app/src/main/java/com/macrotrack/app/domain/AdaptiveEngineModels.kt \
-        app/src/test/java/com/macrotrack/app/domain/RoundingTest.kt \
-        app/src/test/java/com/macrotrack/app/domain/AdaptiveEngineModelsTest.kt
+git add app/src/main/java/com/macroplus/app/domain/Rounding.kt \
+        app/src/main/java/com/macroplus/app/domain/AdaptiveEngineModels.kt \
+        app/src/test/java/com/macroplus/app/domain/RoundingTest.kt \
+        app/src/test/java/com/macroplus/app/domain/AdaptiveEngineModelsTest.kt
 git commit -m "feat: add adaptive engine models and Python-compatible rounding, remove old stub"
 ```
 
@@ -250,8 +250,8 @@ git commit -m "feat: add adaptive engine models and Python-compatible rounding, 
 ### Task 2: AdaptiveEngine (nutrition countability, weight trend, expenditure estimation)
 
 **Files:**
-- Create: `app/src/main/java/com/macrotrack/app/domain/AdaptiveEngine.kt`
-- Test: `app/src/test/java/com/macrotrack/app/domain/AdaptiveEngineTest.kt`
+- Create: `app/src/main/java/com/macroplus/app/domain/AdaptiveEngine.kt`
+- Test: `app/src/test/java/com/macroplus/app/domain/AdaptiveEngineTest.kt`
 
 **Interfaces:**
 - Consumes: `EngineConfig`, `DailyRecord`, `ExpenditureEstimate` (Task 1), `round1`/`round4` (Task 1)
@@ -262,7 +262,7 @@ git commit -m "feat: add adaptive engine models and Python-compatible rounding, 
 - [ ] **Step 1: Write the failing test**
 
 ```kotlin
-package com.macrotrack.app.domain
+package com.macroplus.app.domain
 
 import java.time.LocalDate
 import org.junit.Assert.assertEquals
@@ -369,13 +369,13 @@ class AdaptiveEngineTest {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `./gradlew :app:testDebugUnitTest --tests "com.macrotrack.app.domain.AdaptiveEngineTest"`
+Run: `./gradlew :app:testDebugUnitTest --tests "com.macroplus.app.domain.AdaptiveEngineTest"`
 Expected: FAIL -- `AdaptiveEngine` unresolved.
 
 - [ ] **Step 3: Write minimal implementation**
 
 ```kotlin
-package com.macrotrack.app.domain
+package com.macroplus.app.domain
 
 import java.time.LocalDate
 import java.time.temporal.ChronoUnit
@@ -537,13 +537,13 @@ object AdaptiveEngine {
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `./gradlew :app:testDebugUnitTest --tests "com.macrotrack.app.domain.AdaptiveEngineTest"`
+Run: `./gradlew :app:testDebugUnitTest --tests "com.macroplus.app.domain.AdaptiveEngineTest"`
 Expected: PASS (8 tests)
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add app/src/main/java/com/macrotrack/app/domain/AdaptiveEngine.kt app/src/test/java/com/macrotrack/app/domain/AdaptiveEngineTest.kt
+git add app/src/main/java/com/macroplus/app/domain/AdaptiveEngine.kt app/src/test/java/com/macroplus/app/domain/AdaptiveEngineTest.kt
 git commit -m "feat: port estimate_expenditure and its coverage gating to Kotlin"
 ```
 
@@ -552,8 +552,8 @@ git commit -m "feat: port estimate_expenditure and its coverage gating to Kotlin
 ### Task 3: MacroTargeting (starting estimate, calorie target, macro split)
 
 **Files:**
-- Create: `app/src/main/java/com/macrotrack/app/domain/MacroTargeting.kt`
-- Test: `app/src/test/java/com/macrotrack/app/domain/MacroTargetingTest.kt`
+- Create: `app/src/main/java/com/macroplus/app/domain/MacroTargeting.kt`
+- Test: `app/src/test/java/com/macroplus/app/domain/MacroTargetingTest.kt`
 
 **Interfaces:**
 - Consumes: `EngineConfig` (Task 1), `round1` (Task 1)
@@ -562,7 +562,7 @@ git commit -m "feat: port estimate_expenditure and its coverage gating to Kotlin
 - [ ] **Step 1: Write the failing test**
 
 ```kotlin
-package com.macrotrack.app.domain
+package com.macroplus.app.domain
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -621,13 +621,13 @@ class MacroTargetingTest {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `./gradlew :app:testDebugUnitTest --tests "com.macrotrack.app.domain.MacroTargetingTest"`
+Run: `./gradlew :app:testDebugUnitTest --tests "com.macroplus.app.domain.MacroTargetingTest"`
 Expected: FAIL -- `calorieTarget`/`macroTargets`/`initialExpenditureKcal` unresolved.
 
 - [ ] **Step 3: Write minimal implementation**
 
 ```kotlin
-package com.macrotrack.app.domain
+package com.macroplus.app.domain
 
 /** Mirrors adaptive_engine.py's macro_targets() return dict. */
 data class MacroTargets(
@@ -702,13 +702,13 @@ fun macroTargets(
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `./gradlew :app:testDebugUnitTest --tests "com.macrotrack.app.domain.MacroTargetingTest"`
+Run: `./gradlew :app:testDebugUnitTest --tests "com.macroplus.app.domain.MacroTargetingTest"`
 Expected: PASS (6 tests)
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add app/src/main/java/com/macrotrack/app/domain/MacroTargeting.kt app/src/test/java/com/macrotrack/app/domain/MacroTargetingTest.kt
+git add app/src/main/java/com/macroplus/app/domain/MacroTargeting.kt app/src/test/java/com/macroplus/app/domain/MacroTargetingTest.kt
 git commit -m "feat: port initial_expenditure_kcal, calorie_target, and macro_targets to Kotlin"
 ```
 
@@ -717,8 +717,8 @@ git commit -m "feat: port initial_expenditure_kcal, calorie_target, and macro_ta
 ### Task 4: WeeklyCheckIn (orchestration entry point)
 
 **Files:**
-- Create: `app/src/main/java/com/macrotrack/app/domain/WeeklyCheckIn.kt`
-- Test: `app/src/test/java/com/macrotrack/app/domain/WeeklyCheckInTest.kt`
+- Create: `app/src/main/java/com/macroplus/app/domain/WeeklyCheckIn.kt`
+- Test: `app/src/test/java/com/macroplus/app/domain/WeeklyCheckInTest.kt`
 
 **Interfaces:**
 - Consumes: `AdaptiveEngine.estimateExpenditure` (Task 2), `calorieTarget`/`macroTargets`/`MacroTargets` (Task 3), `EngineConfig`/`DailyRecord`/`ExpenditureEstimate` (Task 1)
@@ -727,7 +727,7 @@ git commit -m "feat: port initial_expenditure_kcal, calorie_target, and macro_ta
 - [ ] **Step 1: Write the failing test**
 
 ```kotlin
-package com.macrotrack.app.domain
+package com.macroplus.app.domain
 
 import java.time.LocalDate
 import org.junit.Assert.assertEquals
@@ -826,13 +826,13 @@ class WeeklyCheckInTest {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `./gradlew :app:testDebugUnitTest --tests "com.macrotrack.app.domain.WeeklyCheckInTest"`
+Run: `./gradlew :app:testDebugUnitTest --tests "com.macroplus.app.domain.WeeklyCheckInTest"`
 Expected: FAIL -- `weeklyCheckIn`/`CheckInModule` unresolved.
 
 - [ ] **Step 3: Write minimal implementation**
 
 ```kotlin
-package com.macrotrack.app.domain
+package com.macroplus.app.domain
 
 /** One suggested action surfaced to the user during a held check-in. */
 data class CheckInModule(val key: String, val action: String)
@@ -889,13 +889,13 @@ fun weeklyCheckIn(
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `./gradlew :app:testDebugUnitTest --tests "com.macrotrack.app.domain.WeeklyCheckInTest"`
+Run: `./gradlew :app:testDebugUnitTest --tests "com.macroplus.app.domain.WeeklyCheckInTest"`
 Expected: PASS (2 tests)
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add app/src/main/java/com/macrotrack/app/domain/WeeklyCheckIn.kt app/src/test/java/com/macrotrack/app/domain/WeeklyCheckInTest.kt
+git add app/src/main/java/com/macroplus/app/domain/WeeklyCheckIn.kt app/src/test/java/com/macroplus/app/domain/WeeklyCheckInTest.kt
 git commit -m "feat: port weekly_check_in to Kotlin, completing the adaptive engine port"
 ```
 

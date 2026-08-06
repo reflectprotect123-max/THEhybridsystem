@@ -1,6 +1,6 @@
-# MacroTrack release candidate — 2026-08-04
+# Macro+ release candidate — 2026-08-04
 
-This snapshot is the current source release candidate for the MacroTrack MVP.
+This snapshot is the current source release candidate for the Macro+ MVP.
 It includes the Compose app, Supabase migrations, Australian food importers,
 deterministic adaptive-engine reference, and offline regression fixtures.
 

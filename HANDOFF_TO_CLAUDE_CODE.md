@@ -2,7 +2,7 @@
 
 Paste this as the opening instruction after opening the repository:
 
-> Work inside this new MacroTrack repository. Read `CLAUDE.md`, `README.md`,
+> Work inside this new Macro+ repository. Read `CLAUDE.md`, `README.md`,
 > `supabase/migrations/001_macro_foundation.sql`, and
 > `docs/ADAPTIVE_ENGINE_CONTRACT.md` before editing. Run the Python tests first.
 > Then audit the migration and Android starter for compile/runtime issues. Build

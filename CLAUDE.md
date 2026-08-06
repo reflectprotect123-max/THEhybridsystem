@@ -1,7 +1,7 @@
-# Claude Code instructions — MacroTrack
+# Claude Code instructions — Macro+
 
 You are taking over a new repository for an Android nutrition tracker named
-MacroTrack.
+Macro+.
 
 ## Product target
 

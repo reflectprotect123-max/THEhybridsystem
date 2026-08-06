@@ -1,4 +1,34 @@
-# MacroTrack — handoff (2026-08-05, final state before ChatGPT takeover)
+# Macro+ — handoff (2026-08-05, final state before ChatGPT takeover)
+
+## Rename: MacroTrack → Macro+ (2026-08-06)
+
+The app was renamed. Everything below that reads "Macro+" was written as
+"MacroTrack" before this date — the history is unchanged, only the name is.
+
+What the rename touched:
+
+- **User-visible name** — `android:label` is now `Macro+`. This is the only
+  place the literal `+` appears in an identifier-like position; it is a
+  display string, not an identifier.
+- **Package and applicationId** — `com.macrotrack.app` → `com.macroplus.app`,
+  with the source directories moved to match. The app is unreleased and no
+  Supabase project exists yet, so there is no install-continuity or Play
+  Store consequence; an already-installed debug build simply becomes a
+  separate app and should be uninstalled by hand.
+- **Kotlin/resource identifiers** — `MacroTrackApplication` →
+  `MacroPlusApplication`, `MacroTrackNavHost` → `MacroPlusNavHost`,
+  `MacroTrackTheme` → `MacroPlusTheme`, `MacroTrackTypography` →
+  `MacroPlusTypography`, `@style/Theme.MacroTrack` → `@style/Theme.MacroPlus`.
+- **`rootProject.name`** — set to `MacroPlus`, not `Macro+`. Gradle feeds this
+  into build-artifact filenames, so it is deliberately kept `+`-free. Do not
+  "fix" it to match the display name.
+- **Docs and SQL comments** — prose references updated throughout.
+
+Verified after the rename: every `.kt` file's `package` declaration matches
+its directory (90/90), every `com.macroplus.*` import resolves to a
+declaration in-tree, and the Python regression suite still passes (9/9).
+Not verified: Kotlin compilation — see "Compilation and testing status".
+The rename is mechanical, but the next CI run is the real gate.
 
 ## Native Android rebuild status
 
@@ -85,11 +115,11 @@ sources, not by a compiler.
   check-ins, macro-program day targets, and RLS policies are represented.
 - **Adaptive engine** — `adaptive_engine.py` (Python reference,
   deterministic, tested) ported to Kotlin at
-  `app/src/main/java/com/macrotrack/app/domain/{AdaptiveEngine,
+  `app/src/main/java/com/macroplus/app/domain/{AdaptiveEngine,
   MacroTargeting, WeeklyCheckIn, AdaptiveEngineModels}.kt`. The Kotlin port
   was verified against the Python reference with ~450,000 randomized inputs
   — zero divergence.
-- **Data repositories** (`app/src/main/java/com/macrotrack/app/data/`) —
+- **Data repositories** (`app/src/main/java/com/macroplus/app/data/`) —
   one per concern, each wraps Supabase Postgrest calls: `FoodRepository`,
   `CustomFoodRepository`, `RecipeRepository`, `FavoritesRepository`,
   `RecentFoodRepository`, `LogRepository`, `DayStatusRepository`,
@@ -101,7 +131,7 @@ sources, not by a compiler.
   and window-end date; recomputes use atomic upsert and remove a stale current
   row only when fresh data cannot support an estimate.
 - **Compose UI (full core app)** —
-  `app/src/main/java/com/macrotrack/app/ui/`:
+  `app/src/main/java/com/macroplus/app/ui/`:
   - `theme/` — Material3 theme, calm sage-green/warm-sand palette
   - `nav/` — bottom-tab NavHost (Daily Log / Weight / Coach), auth-gated
   - `auth/` — sign-in/sign-up

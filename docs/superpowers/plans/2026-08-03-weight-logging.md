@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build the `weight_entries` CRUD data layer for MacroTrack — models, a Supabase-backed repository, and DI wiring — so a future trend-visualisation slice has real weight data to feed into the already-built `AdaptiveEngine.weightTrend`.
+**Goal:** Build the `weight_entries` CRUD data layer for Macro+ — models, a Supabase-backed repository, and DI wiring — so a future trend-visualisation slice has real weight data to feed into the already-built `AdaptiveEngine.weightTrend`.
 
 **Architecture:** Same repository-per-table pattern already used for `LogRepository`/`DayStatusRepository`: a kotlinx.serialization decode model plus a separate insert-payload model, an interface + `Supabase*Repository` implementation pair in one file, wired into `AppContainer` via `by lazy`. `weight_entries` has no `deleted_at` column (confirmed against `supabase/migrations/001_macro_foundation.sql:207-226`), so deletion is a real hard `DELETE`, not the soft-delete `UPDATE` pattern `LogRepository.deleteEntry` uses.
 
@@ -15,27 +15,27 @@
 - Any caller-suppliable numeric value with a DB check constraint gets a client-side `require()` guard before any I/O. `weight_kg`'s constraint is `between 20 and 500`, so `logWeight` must `require(weightKg in 20.0..500.0)` before calling Postgrest.
 - Every repository's `requireUserId()` must call `client.auth.awaitInitialization()` before `client.auth.currentUserOrNull()` — a Critical finding from an earlier slice's final review, applied from the start this time.
 - `deleteEntry` filters by both `id` and `user_id` (defense-in-depth alongside RLS), matching `LogRepository.deleteEntry`'s pattern.
-- Out of scope for this plan: `weight_trend_points`, any UI, any charting. Those belong to the future trend-visualisation slice, which will consume this repository's `listEntries` plus the existing `AdaptiveEngine.weightTrend` (`app/src/main/java/com/macrotrack/app/domain/AdaptiveEngine.kt`).
-- Model field naming/style: `override`/plain `val` properties in `camelCase` with `@SerialName("snake_case")` where the DB column differs, matching `CustomFood`/`FoodLogEntry` in `app/src/main/java/com/macrotrack/app/data/model/`.
+- Out of scope for this plan: `weight_trend_points`, any UI, any charting. Those belong to the future trend-visualisation slice, which will consume this repository's `listEntries` plus the existing `AdaptiveEngine.weightTrend` (`app/src/main/java/com/macroplus/app/domain/AdaptiveEngine.kt`).
+- Model field naming/style: `override`/plain `val` properties in `camelCase` with `@SerialName("snake_case")` where the DB column differs, matching `CustomFood`/`FoodLogEntry` in `app/src/main/java/com/macroplus/app/data/model/`.
 
 ---
 
 ### Task 1: WeightModels
 
 **Files:**
-- Create: `app/src/main/java/com/macrotrack/app/data/model/WeightModels.kt`
-- Test: `app/src/test/java/com/macrotrack/app/data/model/WeightModelsTest.kt`
+- Create: `app/src/main/java/com/macroplus/app/data/model/WeightModels.kt`
+- Test: `app/src/test/java/com/macroplus/app/data/model/WeightModelsTest.kt`
 
 **Interfaces:**
 - Consumes: nothing from earlier tasks.
-- Produces: `WeightEntry` (decode model: `id`, `userId`, `measuredAt: String`, `weightKg: Double`, `source: String`, `note: String?`, `createdAt: String`) and `NewWeightEntry` (insert payload: `userId`, `measuredAt: String`, `weightKg: Double`, `source: String = "manual"`, `note: String? = null` — no `id`/`createdAt`, matching the pattern where server-generated columns are omitted from the `New*` payload). Both are `@Serializable` data classes in package `com.macrotrack.app.data.model`. Task 2 constructs `NewWeightEntry` and decodes `WeightEntry`.
+- Produces: `WeightEntry` (decode model: `id`, `userId`, `measuredAt: String`, `weightKg: Double`, `source: String`, `note: String?`, `createdAt: String`) and `NewWeightEntry` (insert payload: `userId`, `measuredAt: String`, `weightKg: Double`, `source: String = "manual"`, `note: String? = null` — no `id`/`createdAt`, matching the pattern where server-generated columns are omitted from the `New*` payload). Both are `@Serializable` data classes in package `com.macroplus.app.data.model`. Task 2 constructs `NewWeightEntry` and decodes `WeightEntry`.
 
 - [ ] **Step 1: Write the failing test**
 
-Create `app/src/test/java/com/macrotrack/app/data/model/WeightModelsTest.kt`:
+Create `app/src/test/java/com/macroplus/app/data/model/WeightModelsTest.kt`:
 
 ```kotlin
-package com.macrotrack.app.data.model
+package com.macroplus.app.data.model
 
 import kotlinx.serialization.json.Json
 import org.junit.Assert.assertEquals
@@ -109,15 +109,15 @@ class WeightModelsTest {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `./gradlew :app:testDebugUnitTest --tests "com.macrotrack.app.data.model.WeightModelsTest"`
+Run: `./gradlew :app:testDebugUnitTest --tests "com.macroplus.app.data.model.WeightModelsTest"`
 Expected: FAIL — `WeightEntry`/`NewWeightEntry` are unresolved references (the file doesn't exist yet).
 
 - [ ] **Step 3: Write minimal implementation**
 
-Create `app/src/main/java/com/macrotrack/app/data/model/WeightModels.kt`:
+Create `app/src/main/java/com/macroplus/app/data/model/WeightModels.kt`:
 
 ```kotlin
-package com.macrotrack.app.data.model
+package com.macroplus.app.data.model
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -151,13 +151,13 @@ data class NewWeightEntry(
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `./gradlew :app:testDebugUnitTest --tests "com.macrotrack.app.data.model.WeightModelsTest"`
+Run: `./gradlew :app:testDebugUnitTest --tests "com.macroplus.app.data.model.WeightModelsTest"`
 Expected: PASS (3 tests).
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add app/src/main/java/com/macrotrack/app/data/model/WeightModels.kt app/src/test/java/com/macrotrack/app/data/model/WeightModelsTest.kt
+git add app/src/main/java/com/macroplus/app/data/model/WeightModels.kt app/src/test/java/com/macroplus/app/data/model/WeightModelsTest.kt
 git commit -m "feat: add WeightEntry/NewWeightEntry models"
 ```
 
@@ -166,23 +166,23 @@ git commit -m "feat: add WeightEntry/NewWeightEntry models"
 ### Task 2: WeightRepository
 
 **Files:**
-- Create: `app/src/main/java/com/macrotrack/app/data/WeightRepository.kt`
+- Create: `app/src/main/java/com/macroplus/app/data/WeightRepository.kt`
 
 **Interfaces:**
-- Consumes: `WeightEntry`/`NewWeightEntry` from Task 1 (`com.macrotrack.app.data.model`).
+- Consumes: `WeightEntry`/`NewWeightEntry` from Task 1 (`com.macroplus.app.data.model`).
 - Produces: `WeightRepository` interface with `suspend fun listEntries(since: java.time.Instant): List<WeightEntry>`, `suspend fun logWeight(measuredAt: java.time.Instant, weightKg: Double, source: String = "manual", note: String? = null): WeightEntry`, `suspend fun deleteEntry(entryId: String)`; and `SupabaseWeightRepository(client: SupabaseClient) : WeightRepository`. Task 3 (`AppContainer`) constructs `SupabaseWeightRepository(client)`.
 
 This is a thin Postgrest I/O wrapper — matching `LogRepository`/`DayStatusRepository`/`CustomFoodRepository`, it has no dedicated unit test in this plan (no live Supabase project exists in this sandbox to test against; verified instead by static review against the real postgrest-kt 3.7.0 sources, same as prior slices).
 
 - [ ] **Step 1: Write the implementation**
 
-Create `app/src/main/java/com/macrotrack/app/data/WeightRepository.kt`:
+Create `app/src/main/java/com/macroplus/app/data/WeightRepository.kt`:
 
 ```kotlin
-package com.macrotrack.app.data
+package com.macroplus.app.data
 
-import com.macrotrack.app.data.model.NewWeightEntry
-import com.macrotrack.app.data.model.WeightEntry
+import com.macroplus.app.data.model.NewWeightEntry
+import com.macroplus.app.data.model.WeightEntry
 import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.postgrest.postgrest
@@ -249,7 +249,7 @@ Manual verification performed in place of a live compile (record in the task rep
 - [ ] **Step 3: Commit**
 
 ```bash
-git add app/src/main/java/com/macrotrack/app/data/WeightRepository.kt
+git add app/src/main/java/com/macroplus/app/data/WeightRepository.kt
 git commit -m "feat: add WeightRepository with list/log/delete against weight_entries"
 ```
 
@@ -258,7 +258,7 @@ git commit -m "feat: add WeightRepository with list/log/delete against weight_en
 ### Task 3: AppContainer wiring
 
 **Files:**
-- Modify: `app/src/main/java/com/macrotrack/app/data/AppContainer.kt`
+- Modify: `app/src/main/java/com/macroplus/app/data/AppContainer.kt`
 
 **Interfaces:**
 - Consumes: `WeightRepository`/`SupabaseWeightRepository` from Task 2.
@@ -266,7 +266,7 @@ git commit -m "feat: add WeightRepository with list/log/delete against weight_en
 
 - [ ] **Step 1: Add the wiring**
 
-In `app/src/main/java/com/macrotrack/app/data/AppContainer.kt`, add one line alongside the existing repository properties:
+In `app/src/main/java/com/macroplus/app/data/AppContainer.kt`, add one line alongside the existing repository properties:
 
 ```kotlin
     val weightRepository: WeightRepository by lazy { SupabaseWeightRepository(client) }
@@ -275,7 +275,7 @@ In `app/src/main/java/com/macrotrack/app/data/AppContainer.kt`, add one line alo
 Resulting file:
 
 ```kotlin
-package com.macrotrack.app.data
+package com.macroplus.app.data
 
 class AppContainer {
     private val client by lazy { SupabaseClientProvider.create() }
@@ -301,7 +301,7 @@ Expected: PASS, all existing tests plus `WeightModelsTest` green.
 - [ ] **Step 3: Commit**
 
 ```bash
-git add app/src/main/java/com/macrotrack/app/data/AppContainer.kt
+git add app/src/main/java/com/macroplus/app/data/AppContainer.kt
 git commit -m "feat: wire WeightRepository into AppContainer"
 ```
 

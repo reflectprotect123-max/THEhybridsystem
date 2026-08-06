@@ -28,7 +28,7 @@ Copied verbatim from `CLAUDE.md` and `docs/ADAPTIVE_ENGINE_CONTRACT.md`, binding
 ## File Structure
 
 ```
-app/src/main/java/com/macrotrack/app/
+app/src/main/java/com/macroplus/app/
   domain/
     Scalable.kt              # NEW — interface both Food and CustomFood implement
     ServingScaler.kt         # MODIFY — scale()/scaleByServing() take Scalable, not Food
@@ -46,7 +46,7 @@ app/src/main/java/com/macrotrack/app/
     LogRepository.kt         # NEW — the daily logger itself
     DayStatusRepository.kt   # NEW — get/set daily_log_status
     AppContainer.kt          # MODIFY — wire the two new repositories
-app/src/test/java/com/macrotrack/app/
+app/src/test/java/com/macroplus/app/
   domain/
     ServingScalerTest.kt     # MODIFY — add a CustomFood-scaling test case
     MacroResolutionTest.kt   # NEW
@@ -60,11 +60,11 @@ app/src/test/java/com/macrotrack/app/
 ### Task 1: Broaden ServingScaler to scale both Food and CustomFood
 
 **Files:**
-- Create: `app/src/main/java/com/macrotrack/app/domain/Scalable.kt`
-- Modify: `app/src/main/java/com/macrotrack/app/domain/ServingScaler.kt`
-- Modify: `app/src/main/java/com/macrotrack/app/data/model/FoodModels.kt`
-- Modify: `app/src/main/java/com/macrotrack/app/data/model/CustomFoodModels.kt`
-- Test: `app/src/test/java/com/macrotrack/app/domain/ServingScalerTest.kt`
+- Create: `app/src/main/java/com/macroplus/app/domain/Scalable.kt`
+- Modify: `app/src/main/java/com/macroplus/app/domain/ServingScaler.kt`
+- Modify: `app/src/main/java/com/macroplus/app/data/model/FoodModels.kt`
+- Modify: `app/src/main/java/com/macroplus/app/data/model/CustomFoodModels.kt`
+- Test: `app/src/test/java/com/macroplus/app/domain/ServingScalerTest.kt`
 
 **Interfaces:**
 - Consumes: nothing new
@@ -79,7 +79,7 @@ Add this test to the existing `ServingScalerTest.kt` (append it inside the exist
 ```kotlin
     @Test
     fun scalesACustomFoodTheSameWayAsAFood() {
-        val customShake = com.macrotrack.app.data.model.CustomFood(
+        val customShake = com.macroplus.app.data.model.CustomFood(
             id = "custom-1",
             userId = "user-1",
             name = "My Protein Shake",
@@ -102,13 +102,13 @@ Add this test to the existing `ServingScalerTest.kt` (append it inside the exist
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `./gradlew :app:testDebugUnitTest --tests "com.macrotrack.app.domain.ServingScalerTest"`
+Run: `./gradlew :app:testDebugUnitTest --tests "com.macroplus.app.domain.ServingScalerTest"`
 Expected: FAIL — compile error, `ServingScaler.scale` does not accept a `CustomFood` argument (it's typed to `Food`).
 
 - [ ] **Step 3: Write the Scalable interface**
 
 ```kotlin
-package com.macrotrack.app.domain
+package com.macroplus.app.domain
 
 /**
  * Anything ServingScaler can scale: a row whose macros are stored per
@@ -129,10 +129,10 @@ interface Scalable {
 
 - [ ] **Step 4: Retrofit Food and CustomFood to implement Scalable**
 
-In `app/src/main/java/com/macrotrack/app/data/model/FoodModels.kt`, change the `Food` class declaration and add `override` to the 8 shared properties (every other property — `brand`, `barcode`, `source`, `externalId`, `nutritionBasisQty`, `nutritionBasisUnit`, `servingSizeText` — is unchanged):
+In `app/src/main/java/com/macroplus/app/data/model/FoodModels.kt`, change the `Food` class declaration and add `override` to the 8 shared properties (every other property — `brand`, `barcode`, `source`, `externalId`, `nutritionBasisQty`, `nutritionBasisUnit`, `servingSizeText` — is unchanged):
 
 ```kotlin
-import com.macrotrack.app.domain.Scalable
+import com.macroplus.app.domain.Scalable
 
 @Serializable
 data class Food(
@@ -156,10 +156,10 @@ data class Food(
 
 (Leave `FoodServing` and the file's existing KDoc comment untouched — only `Food`'s class header and its 8 matching properties change.)
 
-In `app/src/main/java/com/macrotrack/app/data/model/CustomFoodModels.kt`, the same treatment for `CustomFood` only (leave `NewCustomFood` untouched — it's an insert payload, not something that ever gets scaled):
+In `app/src/main/java/com/macroplus/app/data/model/CustomFoodModels.kt`, the same treatment for `CustomFood` only (leave `NewCustomFood` untouched — it's an insert payload, not something that ever gets scaled):
 
 ```kotlin
-import com.macrotrack.app.domain.Scalable
+import com.macroplus.app.domain.Scalable
 
 @Serializable
 data class CustomFood(
@@ -179,12 +179,12 @@ data class CustomFood(
 
 - [ ] **Step 5: Update ServingScaler's signatures**
 
-In `app/src/main/java/com/macrotrack/app/domain/ServingScaler.kt`, change every `food: Food` parameter to `food: Scalable` (there are three: `scale`, `scaleByServing`, the private `scaleByMultiplier`), and drop the now-unused `import com.macrotrack.app.data.model.Food`:
+In `app/src/main/java/com/macroplus/app/domain/ServingScaler.kt`, change every `food: Food` parameter to `food: Scalable` (there are three: `scale`, `scaleByServing`, the private `scaleByMultiplier`), and drop the now-unused `import com.macroplus.app.data.model.Food`:
 
 ```kotlin
-package com.macrotrack.app.domain
+package com.macroplus.app.domain
 
-import com.macrotrack.app.data.model.FoodServing
+import com.macroplus.app.data.model.FoodServing
 
 data class ScaledMacros(
     val calories: Double,
@@ -243,17 +243,17 @@ object ServingScaler {
 
 - [ ] **Step 6: Run tests to verify they pass**
 
-Run: `./gradlew :app:testDebugUnitTest --tests "com.macrotrack.app.domain.ServingScalerTest"`
+Run: `./gradlew :app:testDebugUnitTest --tests "com.macroplus.app.domain.ServingScalerTest"`
 Expected: PASS (6 tests — the 5 existing plus the new `CustomFood` one). All 5 existing tests pass unchanged because `Food` still satisfies `Scalable`.
 
 - [ ] **Step 7: Commit**
 
 ```bash
-git add app/src/main/java/com/macrotrack/app/domain/Scalable.kt \
-        app/src/main/java/com/macrotrack/app/domain/ServingScaler.kt \
-        app/src/main/java/com/macrotrack/app/data/model/FoodModels.kt \
-        app/src/main/java/com/macrotrack/app/data/model/CustomFoodModels.kt \
-        app/src/test/java/com/macrotrack/app/domain/ServingScalerTest.kt
+git add app/src/main/java/com/macroplus/app/domain/Scalable.kt \
+        app/src/main/java/com/macroplus/app/domain/ServingScaler.kt \
+        app/src/main/java/com/macroplus/app/data/model/FoodModels.kt \
+        app/src/main/java/com/macroplus/app/data/model/CustomFoodModels.kt \
+        app/src/test/java/com/macroplus/app/domain/ServingScalerTest.kt
 git commit -m "feat: broaden ServingScaler to scale both Food and CustomFood via Scalable"
 ```
 
@@ -262,8 +262,8 @@ git commit -m "feat: broaden ServingScaler to scale both Food and CustomFood via
 ### Task 2: Log entry models
 
 **Files:**
-- Create: `app/src/main/java/com/macrotrack/app/data/model/LogEntryModels.kt`
-- Test: `app/src/test/java/com/macrotrack/app/data/model/LogEntryModelsTest.kt`
+- Create: `app/src/main/java/com/macroplus/app/data/model/LogEntryModels.kt`
+- Test: `app/src/test/java/com/macroplus/app/data/model/LogEntryModelsTest.kt`
 
 **Interfaces:**
 - Consumes: nothing
@@ -272,7 +272,7 @@ git commit -m "feat: broaden ServingScaler to scale both Food and CustomFood via
 - [ ] **Step 1: Write the failing test**
 
 ```kotlin
-package com.macrotrack.app.data.model
+package com.macroplus.app.data.model
 
 import kotlinx.serialization.json.Json
 import org.junit.Assert.assertEquals
@@ -339,13 +339,13 @@ class LogEntryModelsTest {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `./gradlew :app:testDebugUnitTest --tests "com.macrotrack.app.data.model.LogEntryModelsTest"`
+Run: `./gradlew :app:testDebugUnitTest --tests "com.macroplus.app.data.model.LogEntryModelsTest"`
 Expected: FAIL — `FoodLogEntry`/`DailyTotals`/`EntryKind` unresolved.
 
 - [ ] **Step 3: Write minimal implementation**
 
 ```kotlin
-package com.macrotrack.app.data.model
+package com.macroplus.app.data.model
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -433,13 +433,13 @@ data class DailyTotals(
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `./gradlew :app:testDebugUnitTest --tests "com.macrotrack.app.data.model.LogEntryModelsTest"`
+Run: `./gradlew :app:testDebugUnitTest --tests "com.macroplus.app.data.model.LogEntryModelsTest"`
 Expected: PASS
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add app/src/main/java/com/macrotrack/app/data/model/LogEntryModels.kt app/src/test/java/com/macrotrack/app/data/model/LogEntryModelsTest.kt
+git add app/src/main/java/com/macroplus/app/data/model/LogEntryModels.kt app/src/test/java/com/macroplus/app/data/model/LogEntryModelsTest.kt
 git commit -m "feat: add food log entry and daily totals models"
 ```
 
@@ -448,8 +448,8 @@ git commit -m "feat: add food log entry and daily totals models"
 ### Task 3: Day status models
 
 **Files:**
-- Create: `app/src/main/java/com/macrotrack/app/data/model/DayStatusModels.kt`
-- Test: `app/src/test/java/com/macrotrack/app/data/model/DayStatusModelsTest.kt`
+- Create: `app/src/main/java/com/macroplus/app/data/model/DayStatusModels.kt`
+- Test: `app/src/test/java/com/macroplus/app/data/model/DayStatusModelsTest.kt`
 
 **Interfaces:**
 - Consumes: nothing
@@ -458,7 +458,7 @@ git commit -m "feat: add food log entry and daily totals models"
 - [ ] **Step 1: Write the failing test**
 
 ```kotlin
-package com.macrotrack.app.data.model
+package com.macroplus.app.data.model
 
 import kotlinx.serialization.json.Json
 import org.junit.Assert.assertEquals
@@ -499,13 +499,13 @@ class DayStatusModelsTest {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `./gradlew :app:testDebugUnitTest --tests "com.macrotrack.app.data.model.DayStatusModelsTest"`
+Run: `./gradlew :app:testDebugUnitTest --tests "com.macroplus.app.data.model.DayStatusModelsTest"`
 Expected: FAIL — `DailyLogStatus`/`DayStatus` unresolved.
 
 - [ ] **Step 3: Write minimal implementation**
 
 ```kotlin
-package com.macrotrack.app.data.model
+package com.macroplus.app.data.model
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -540,13 +540,13 @@ data class DailyLogStatus(
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `./gradlew :app:testDebugUnitTest --tests "com.macrotrack.app.data.model.DayStatusModelsTest"`
+Run: `./gradlew :app:testDebugUnitTest --tests "com.macroplus.app.data.model.DayStatusModelsTest"`
 Expected: PASS
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add app/src/main/java/com/macrotrack/app/data/model/DayStatusModels.kt app/src/test/java/com/macrotrack/app/data/model/DayStatusModelsTest.kt
+git add app/src/main/java/com/macroplus/app/data/model/DayStatusModels.kt app/src/test/java/com/macroplus/app/data/model/DayStatusModelsTest.kt
 git commit -m "feat: add daily log status model"
 ```
 
@@ -555,8 +555,8 @@ git commit -m "feat: add daily log status model"
 ### Task 4: MacroResolution (pure serving-fallback and recipe rollup math)
 
 **Files:**
-- Create: `app/src/main/java/com/macrotrack/app/domain/MacroResolution.kt`
-- Test: `app/src/test/java/com/macrotrack/app/domain/MacroResolutionTest.kt`
+- Create: `app/src/main/java/com/macroplus/app/domain/MacroResolution.kt`
+- Test: `app/src/test/java/com/macroplus/app/domain/MacroResolutionTest.kt`
 
 **Interfaces:**
 - Consumes: `ScaledMacros`, `ServingScaler` (Task 1), `Food`/`FoodServing` (already committed)
@@ -567,10 +567,10 @@ git commit -m "feat: add daily log status model"
 - [ ] **Step 1: Write the failing test**
 
 ```kotlin
-package com.macrotrack.app.domain
+package com.macroplus.app.domain
 
-import com.macrotrack.app.data.model.Food
-import com.macrotrack.app.data.model.FoodServing
+import com.macroplus.app.data.model.Food
+import com.macroplus.app.data.model.FoodServing
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
 import org.junit.Test
@@ -648,16 +648,16 @@ class MacroResolutionTest {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `./gradlew :app:testDebugUnitTest --tests "com.macrotrack.app.domain.MacroResolutionTest"`
+Run: `./gradlew :app:testDebugUnitTest --tests "com.macroplus.app.domain.MacroResolutionTest"`
 Expected: FAIL — `MacroResolution` unresolved.
 
 - [ ] **Step 3: Write minimal implementation**
 
 ```kotlin
-package com.macrotrack.app.domain
+package com.macroplus.app.domain
 
-import com.macrotrack.app.data.model.Food
-import com.macrotrack.app.data.model.FoodServing
+import com.macroplus.app.data.model.Food
+import com.macroplus.app.data.model.FoodServing
 
 /**
  * Pure macro math that ServingScaler alone can't do: falling back to an
@@ -713,13 +713,13 @@ object MacroResolution {
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `./gradlew :app:testDebugUnitTest --tests "com.macrotrack.app.domain.MacroResolutionTest"`
+Run: `./gradlew :app:testDebugUnitTest --tests "com.macroplus.app.domain.MacroResolutionTest"`
 Expected: PASS (8 tests)
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add app/src/main/java/com/macrotrack/app/domain/MacroResolution.kt app/src/test/java/com/macrotrack/app/domain/MacroResolutionTest.kt
+git add app/src/main/java/com/macroplus/app/domain/MacroResolution.kt app/src/test/java/com/macroplus/app/domain/MacroResolutionTest.kt
 git commit -m "feat: add MacroResolution for serving-fallback and recipe rollup math"
 ```
 
@@ -728,10 +728,10 @@ git commit -m "feat: add MacroResolution for serving-fallback and recipe rollup 
 ### Task 5: getById additions + RecipeMacroResolver
 
 **Files:**
-- Modify: `app/src/main/java/com/macrotrack/app/data/FoodRepository.kt`
-- Modify: `app/src/main/java/com/macrotrack/app/data/CustomFoodRepository.kt`
-- Modify: `app/src/main/java/com/macrotrack/app/data/RecipeRepository.kt`
-- Create: `app/src/main/java/com/macrotrack/app/data/RecipeMacroResolver.kt`
+- Modify: `app/src/main/java/com/macroplus/app/data/FoodRepository.kt`
+- Modify: `app/src/main/java/com/macroplus/app/data/CustomFoodRepository.kt`
+- Modify: `app/src/main/java/com/macroplus/app/data/RecipeRepository.kt`
+- Create: `app/src/main/java/com/macroplus/app/data/RecipeMacroResolver.kt`
 
 **Interfaces:**
 - Consumes: `FoodRepository`/`CustomFoodRepository`/`RecipeRepository` (existing), `MacroResolution`/`ServingScaler` (Task 4/1)
@@ -741,7 +741,7 @@ git commit -m "feat: add MacroResolution for serving-fallback and recipe rollup 
 
 - [ ] **Step 1: Add getById to FoodRepository**
 
-In `app/src/main/java/com/macrotrack/app/data/FoodRepository.kt`, add to the `FoodRepository` interface:
+In `app/src/main/java/com/macroplus/app/data/FoodRepository.kt`, add to the `FoodRepository` interface:
 
 ```kotlin
     suspend fun getById(id: String): Food?
@@ -760,7 +760,7 @@ And to `SupabaseFoodRepository`:
 
 - [ ] **Step 2: Add getById to CustomFoodRepository**
 
-In `app/src/main/java/com/macrotrack/app/data/CustomFoodRepository.kt`, add to the `CustomFoodRepository` interface:
+In `app/src/main/java/com/macroplus/app/data/CustomFoodRepository.kt`, add to the `CustomFoodRepository` interface:
 
 ```kotlin
     suspend fun getById(id: String): CustomFood?
@@ -779,7 +779,7 @@ And to `SupabaseCustomFoodRepository` (no extra `user_id` filter needed — RLS'
 
 - [ ] **Step 3: Add getById to RecipeRepository**
 
-In `app/src/main/java/com/macrotrack/app/data/RecipeRepository.kt`, add to the `RecipeRepository` interface:
+In `app/src/main/java/com/macroplus/app/data/RecipeRepository.kt`, add to the `RecipeRepository` interface:
 
 ```kotlin
     suspend fun getById(id: String): Recipe?
@@ -799,12 +799,12 @@ And to `SupabaseRecipeRepository`:
 - [ ] **Step 4: Write RecipeMacroResolver**
 
 ```kotlin
-package com.macrotrack.app.data
+package com.macroplus.app.data
 
-import com.macrotrack.app.data.model.Recipe
-import com.macrotrack.app.domain.MacroResolution
-import com.macrotrack.app.domain.ScaledMacros
-import com.macrotrack.app.domain.ServingScaler
+import com.macroplus.app.data.model.Recipe
+import com.macroplus.app.domain.MacroResolution
+import com.macroplus.app.domain.ScaledMacros
+import com.macroplus.app.domain.ServingScaler
 
 /**
  * Resolves a recipe's per-serving macros by fetching each ingredient's
@@ -848,10 +848,10 @@ class RecipeMacroResolver(
 - [ ] **Step 5: Commit**
 
 ```bash
-git add app/src/main/java/com/macrotrack/app/data/FoodRepository.kt \
-        app/src/main/java/com/macrotrack/app/data/CustomFoodRepository.kt \
-        app/src/main/java/com/macrotrack/app/data/RecipeRepository.kt \
-        app/src/main/java/com/macrotrack/app/data/RecipeMacroResolver.kt
+git add app/src/main/java/com/macroplus/app/data/FoodRepository.kt \
+        app/src/main/java/com/macroplus/app/data/CustomFoodRepository.kt \
+        app/src/main/java/com/macroplus/app/data/RecipeRepository.kt \
+        app/src/main/java/com/macroplus/app/data/RecipeMacroResolver.kt
 git commit -m "feat: add getById lookups and RecipeMacroResolver"
 ```
 
@@ -860,7 +860,7 @@ git commit -m "feat: add getById lookups and RecipeMacroResolver"
 ### Task 6: LogRepository
 
 **Files:**
-- Create: `app/src/main/java/com/macrotrack/app/data/LogRepository.kt`
+- Create: `app/src/main/java/com/macroplus/app/data/LogRepository.kt`
 
 **Interfaces:**
 - Consumes: `FoodLogEntry`/`NewFoodLogEntry`/`DailyTotals`/`EntryKind` (Task 2), `ScaledMacros`/`MacroResolution`/`ServingScaler` (Task 1/4), `FoodRepository`/`RecipeRepository`/`RecipeMacroResolver` (existing/Task 5), `Food`/`CustomFood` (existing)
@@ -871,17 +871,17 @@ git commit -m "feat: add getById lookups and RecipeMacroResolver"
 - [ ] **Step 1: Write the implementation**
 
 ```kotlin
-package com.macrotrack.app.data
+package com.macroplus.app.data
 
-import com.macrotrack.app.data.model.CustomFood
-import com.macrotrack.app.data.model.DailyTotals
-import com.macrotrack.app.data.model.EntryKind
-import com.macrotrack.app.data.model.Food
-import com.macrotrack.app.data.model.FoodLogEntry
-import com.macrotrack.app.data.model.NewFoodLogEntry
-import com.macrotrack.app.domain.MacroResolution
-import com.macrotrack.app.domain.ScaledMacros
-import com.macrotrack.app.domain.ServingScaler
+import com.macroplus.app.data.model.CustomFood
+import com.macroplus.app.data.model.DailyTotals
+import com.macroplus.app.data.model.EntryKind
+import com.macroplus.app.data.model.Food
+import com.macroplus.app.data.model.FoodLogEntry
+import com.macroplus.app.data.model.NewFoodLogEntry
+import com.macroplus.app.domain.MacroResolution
+import com.macroplus.app.domain.ScaledMacros
+import com.macroplus.app.domain.ServingScaler
 import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.postgrest.postgrest
@@ -1023,7 +1023,7 @@ class SupabaseLogRepository(
 - [ ] **Step 2: Commit**
 
 ```bash
-git add app/src/main/java/com/macrotrack/app/data/LogRepository.kt
+git add app/src/main/java/com/macroplus/app/data/LogRepository.kt
 git commit -m "feat: add LogRepository for snapshot-based daily food logging"
 ```
 
@@ -1032,7 +1032,7 @@ git commit -m "feat: add LogRepository for snapshot-based daily food logging"
 ### Task 7: DayStatusRepository
 
 **Files:**
-- Create: `app/src/main/java/com/macrotrack/app/data/DayStatusRepository.kt`
+- Create: `app/src/main/java/com/macroplus/app/data/DayStatusRepository.kt`
 
 **Interfaces:**
 - Consumes: `DailyLogStatus` (Task 3), `SupabaseClient`
@@ -1043,9 +1043,9 @@ git commit -m "feat: add LogRepository for snapshot-based daily food logging"
 - [ ] **Step 1: Write the implementation**
 
 ```kotlin
-package com.macrotrack.app.data
+package com.macroplus.app.data
 
-import com.macrotrack.app.data.model.DailyLogStatus
+import com.macroplus.app.data.model.DailyLogStatus
 import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.postgrest.postgrest
@@ -1086,7 +1086,7 @@ class SupabaseDayStatusRepository(private val client: SupabaseClient) : DayStatu
 - [ ] **Step 2: Commit**
 
 ```bash
-git add app/src/main/java/com/macrotrack/app/data/DayStatusRepository.kt
+git add app/src/main/java/com/macroplus/app/data/DayStatusRepository.kt
 git commit -m "feat: add DayStatusRepository for explicit day-state tracking"
 ```
 
@@ -1095,7 +1095,7 @@ git commit -m "feat: add DayStatusRepository for explicit day-state tracking"
 ### Task 8: AppContainer wiring
 
 **Files:**
-- Modify: `app/src/main/java/com/macrotrack/app/data/AppContainer.kt`
+- Modify: `app/src/main/java/com/macroplus/app/data/AppContainer.kt`
 
 **Interfaces:**
 - Consumes: `LogRepository`/`SupabaseLogRepository` (Task 6), `DayStatusRepository`/`SupabaseDayStatusRepository` (Task 7), `RecipeMacroResolver` (Task 5), everything already wired
@@ -1106,7 +1106,7 @@ git commit -m "feat: add DayStatusRepository for explicit day-state tracking"
 - [ ] **Step 1: Update the implementation**
 
 ```kotlin
-package com.macrotrack.app.data
+package com.macroplus.app.data
 
 class AppContainer {
     private val client by lazy { SupabaseClientProvider.create() }
@@ -1126,7 +1126,7 @@ class AppContainer {
 - [ ] **Step 2: Commit**
 
 ```bash
-git add app/src/main/java/com/macrotrack/app/data/AppContainer.kt
+git add app/src/main/java/com/macroplus/app/data/AppContainer.kt
 git commit -m "feat: wire daily logger into AppContainer"
 ```
 

@@ -1,4 +1,4 @@
--- MacroTrack: keep weekly check-ins distinct across macro-program changes.
+-- Macro+: keep weekly check-ins distinct across macro-program changes.
 --
 -- The original table keyed a check-in by (user_id, week_start). That lets a
 -- goal change during the same calendar week overwrite the prior program's

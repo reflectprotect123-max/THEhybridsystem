@@ -17,7 +17,7 @@
 - Any field the parser isn't confident about must be `null` in `ParsedNutritionLabel`, never a guessed value. The UI leaves a `null` field blank/unchanged — no visual "low confidence" indicator.
 - Whole-photo failure (parser returns an all-null result) shows a retry prompt; this is the one deliberate exception to "just fall through silently."
 - Energy: prefer a kcal/Cal reading if present; convert from kJ only when kcal is absent, using the same `4.184` kJ-per-kcal constant `seed_common.py`'s `KJ_PER_KCAL` already uses.
-- Kotlin domain code in this repo is pure (no Android framework imports) and tested with plain JUnit — see `app/src/main/java/com/macrotrack/app/domain/ServingScaler.kt` and its test for the house style to match (KDoc explains *why*, `require()` for invariants, `object` with pure functions).
+- Kotlin domain code in this repo is pure (no Android framework imports) and tested with plain JUnit — see `app/src/main/java/com/macroplus/app/domain/ServingScaler.kt` and its test for the house style to match (KDoc explains *why*, `require()` for invariants, `object` with pure functions).
 
 ---
 
@@ -53,8 +53,8 @@ git commit -m "Add ML Kit Text Recognition dependency for nutrition-label OCR"
 ### Task 2: `NutritionLabelParser` domain logic
 
 **Files:**
-- Create: `app/src/main/java/com/macrotrack/app/domain/NutritionLabelParser.kt`
-- Test: `app/src/test/java/com/macrotrack/app/domain/NutritionLabelParserTest.kt`
+- Create: `app/src/main/java/com/macroplus/app/domain/NutritionLabelParser.kt`
+- Test: `app/src/test/java/com/macroplus/app/domain/NutritionLabelParserTest.kt`
 
 **Interfaces:**
 - Produces:
@@ -67,10 +67,10 @@ This task has several TDD cycles against the same two files — one per parsing 
 
 - [ ] **Step 1: Write the failing test for the basic happy path**
 
-Create `app/src/test/java/com/macrotrack/app/domain/NutritionLabelParserTest.kt`:
+Create `app/src/test/java/com/macroplus/app/domain/NutritionLabelParserTest.kt`:
 
 ```kotlin
-package com.macrotrack.app.domain
+package com.macroplus.app.domain
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -107,15 +107,15 @@ class NutritionLabelParserTest {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `./gradlew :app:testDebugUnitTest --tests com.macrotrack.app.domain.NutritionLabelParserTest`
+Run: `./gradlew :app:testDebugUnitTest --tests com.macroplus.app.domain.NutritionLabelParserTest`
 Expected: FAIL — `OcrLine`, `ParsedNutritionLabel`, and `NutritionLabelParser` don't exist yet (compile error).
 
 - [ ] **Step 3: Write the implementation to make it pass**
 
-Create `app/src/main/java/com/macrotrack/app/domain/NutritionLabelParser.kt`:
+Create `app/src/main/java/com/macroplus/app/domain/NutritionLabelParser.kt`:
 
 ```kotlin
-package com.macrotrack.app.domain
+package com.macroplus.app.domain
 
 /**
  * One recognized line of text and its bounding box, decoupled from ML Kit's
@@ -251,13 +251,13 @@ object NutritionLabelParser {
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `./gradlew :app:testDebugUnitTest --tests com.macrotrack.app.domain.NutritionLabelParserTest`
+Run: `./gradlew :app:testDebugUnitTest --tests com.macroplus.app.domain.NutritionLabelParserTest`
 Expected: PASS
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add app/src/main/java/com/macrotrack/app/domain/NutritionLabelParser.kt app/src/test/java/com/macrotrack/app/domain/NutritionLabelParserTest.kt
+git add app/src/main/java/com/macroplus/app/domain/NutritionLabelParser.kt app/src/test/java/com/macroplus/app/domain/NutritionLabelParserTest.kt
 git commit -m "Add NutritionLabelParser with a passing happy-path test"
 ```
 
@@ -281,13 +281,13 @@ Add to `NutritionLabelParserTest.kt`:
 
 - [ ] **Step 7: Run test to verify it fails**
 
-Run: `./gradlew :app:testDebugUnitTest --tests com.macrotrack.app.domain.NutritionLabelParserTest`
+Run: `./gradlew :app:testDebugUnitTest --tests com.macroplus.app.domain.NutritionLabelParserTest`
 Expected: FAIL if it doesn't already pass with Step 3's implementation — `parseEnergyKcal` already handles this case, so this may in fact PASS immediately. If it passes immediately, that confirms Step 3's implementation already covers this behavior; note that in the commit message instead of skipping the test.
 
 - [ ] **Step 8: Confirm and commit**
 
 ```bash
-git add app/src/test/java/com/macrotrack/app/domain/NutritionLabelParserTest.kt
+git add app/src/test/java/com/macroplus/app/domain/NutritionLabelParserTest.kt
 git commit -m "Add test: energy falls back to kJ->kcal conversion when no Cal reading exists"
 ```
 
@@ -318,13 +318,13 @@ Add to `NutritionLabelParserTest.kt`:
 
 - [ ] **Step 10: Run test to verify it fails**
 
-Run: `./gradlew :app:testDebugUnitTest --tests com.macrotrack.app.domain.NutritionLabelParserTest`
+Run: `./gradlew :app:testDebugUnitTest --tests com.macroplus.app.domain.NutritionLabelParserTest`
 Expected: this exercises `isFatTotalLabel`/`isCarbohydrateTotalLabel`'s existing "saturated"/"sugar" exclusion — it may already PASS. If it fails, the bug is almost certainly that the sub-row's number is overwriting the total row's; fix by keeping the `calories == null && ...` / `proteinG == null && ...` style guards already in `parse()`'s `when` block (first match wins, and the total row is expected to appear before its sub-row on a real label) — do not weaken the label-matching regex to "fix" this by making sub-rows fail to match at all, since a genuinely mis-ordered photo should still be caught by row order, not by accident.
 
 - [ ] **Step 11: Confirm and commit**
 
 ```bash
-git add app/src/test/java/com/macrotrack/app/domain/NutritionLabelParserTest.kt
+git add app/src/test/java/com/macroplus/app/domain/NutritionLabelParserTest.kt
 git commit -m "Add test: fat/carbohydrate sub-rows don't overwrite the total row"
 ```
 
@@ -359,13 +359,13 @@ Add to `NutritionLabelParserTest.kt`:
 
 - [ ] **Step 13: Run test to verify it fails**
 
-Run: `./gradlew :app:testDebugUnitTest --tests com.macrotrack.app.domain.NutritionLabelParserTest`
+Run: `./gradlew :app:testDebugUnitTest --tests com.macroplus.app.domain.NutritionLabelParserTest`
 Expected: this specifically exercises `groupIntoRows`'s sort-by-vertical-position-first behavior from Step 3 — it should PASS given that implementation. If it fails, the row grouping is not correctly independent of input order; the fix is in `groupIntoRows`, not in the row-matching logic.
 
 - [ ] **Step 14: Confirm and commit**
 
 ```bash
-git add app/src/test/java/com/macrotrack/app/domain/NutritionLabelParserTest.kt
+git add app/src/test/java/com/macroplus/app/domain/NutritionLabelParserTest.kt
 git commit -m "Add test: row grouping is independent of OCR line order"
 ```
 
@@ -404,13 +404,13 @@ Add to `NutritionLabelParserTest.kt`:
 
 - [ ] **Step 16: Run test to verify it fails**
 
-Run: `./gradlew :app:testDebugUnitTest --tests com.macrotrack.app.domain.NutritionLabelParserTest`
+Run: `./gradlew :app:testDebugUnitTest --tests com.macroplus.app.domain.NutritionLabelParserTest`
 Expected: exercises `parseServingSize` from Step 3 — should PASS given that implementation.
 
 - [ ] **Step 17: Confirm and commit**
 
 ```bash
-git add app/src/test/java/com/macrotrack/app/domain/NutritionLabelParserTest.kt
+git add app/src/test/java/com/macroplus/app/domain/NutritionLabelParserTest.kt
 git commit -m "Add tests: serving-size parsing from parenthetical grams, and its absence"
 ```
 
@@ -434,19 +434,19 @@ Add to `NutritionLabelParserTest.kt`:
 
 - [ ] **Step 19: Run test to verify it fails**
 
-Run: `./gradlew :app:testDebugUnitTest --tests com.macrotrack.app.domain.NutritionLabelParserTest`
+Run: `./gradlew :app:testDebugUnitTest --tests com.macroplus.app.domain.NutritionLabelParserTest`
 Expected: should PASS given Step 3's implementation (none of these lines match any label keyword, so every field stays null and `isEmpty` is true).
 
 - [ ] **Step 20: Confirm and commit**
 
 ```bash
-git add app/src/test/java/com/macrotrack/app/domain/NutritionLabelParserTest.kt
+git add app/src/test/java/com/macroplus/app/domain/NutritionLabelParserTest.kt
 git commit -m "Add test: unrecognizable photo text yields an empty (all-null) result"
 ```
 
 - [ ] **Step 21: Full test file run**
 
-Run: `./gradlew :app:testDebugUnitTest --tests com.macrotrack.app.domain.NutritionLabelParserTest`
+Run: `./gradlew :app:testDebugUnitTest --tests com.macroplus.app.domain.NutritionLabelParserTest`
 Expected: all 8 tests PASS.
 
 ---
@@ -454,20 +454,20 @@ Expected: all 8 tests PASS.
 ### Task 3: `NutritionLabelScannerScreen`
 
 **Files:**
-- Create: `app/src/main/java/com/macrotrack/app/ui/search/NutritionLabelScannerScreen.kt`
+- Create: `app/src/main/java/com/macroplus/app/ui/search/NutritionLabelScannerScreen.kt`
 
 **Interfaces:**
-- Consumes: `com.macrotrack.app.domain.OcrLine`, `ParsedNutritionLabel`, `NutritionLabelParser.parse(lines: List<OcrLine>): ParsedNutritionLabel` (Task 2).
+- Consumes: `com.macroplus.app.domain.OcrLine`, `ParsedNutritionLabel`, `NutritionLabelParser.parse(lines: List<OcrLine>): ParsedNutritionLabel` (Task 2).
 - Produces: `@Composable fun NutritionLabelScannerScreen(onResult: (ParsedNutritionLabel) -> Unit, onClose: () -> Unit)` — later consumed by Task 6's nav wiring.
 
 No unit test for this file: it's a Compose screen driving CameraX and ML Kit, exactly like `BarcodeScannerScreen`, which also has no test — this project validates that class of screen manually on-device (see `docs/superpowers/specs/2026-08-04-nutrition-label-ocr-design.md`'s Testing section and the barcode scanner's own untested precedent).
 
 - [ ] **Step 1: Write the screen**
 
-Create `app/src/main/java/com/macrotrack/app/ui/search/NutritionLabelScannerScreen.kt`:
+Create `app/src/main/java/com/macroplus/app/ui/search/NutritionLabelScannerScreen.kt`:
 
 ```kotlin
-package com.macrotrack.app.ui.search
+package com.macroplus.app.ui.search
 
 import android.Manifest
 import android.app.Activity
@@ -521,9 +521,9 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
-import com.macrotrack.app.domain.NutritionLabelParser
-import com.macrotrack.app.domain.OcrLine
-import com.macrotrack.app.domain.ParsedNutritionLabel
+import com.macroplus.app.domain.NutritionLabelParser
+import com.macroplus.app.domain.OcrLine
+import com.macroplus.app.domain.ParsedNutritionLabel
 import java.util.concurrent.Executors
 
 /**
@@ -810,7 +810,7 @@ private fun NutritionLabelPermissionContent(
 - [ ] **Step 2: Commit**
 
 ```bash
-git add app/src/main/java/com/macrotrack/app/ui/search/NutritionLabelScannerScreen.kt
+git add app/src/main/java/com/macroplus/app/ui/search/NutritionLabelScannerScreen.kt
 git commit -m "Add NutritionLabelScannerScreen (camera capture + on-device OCR)"
 ```
 
@@ -819,23 +819,23 @@ git commit -m "Add NutritionLabelScannerScreen (camera capture + on-device OCR)"
 ### Task 4: Wire the parsed result into `CreateCustomFoodViewModel`
 
 **Files:**
-- Modify: `app/src/main/java/com/macrotrack/app/ui/search/CreateCustomFoodViewModel.kt`
-- Test: `app/src/test/java/com/macrotrack/app/ui/search/CreateCustomFoodViewModelTest.kt` (new file - none exists for this ViewModel today; check first in case one was added since this plan was written)
+- Modify: `app/src/main/java/com/macroplus/app/ui/search/CreateCustomFoodViewModel.kt`
+- Test: `app/src/test/java/com/macroplus/app/ui/search/CreateCustomFoodViewModelTest.kt` (new file - none exists for this ViewModel today; check first in case one was added since this plan was written)
 
 **Interfaces:**
-- Consumes: `com.macrotrack.app.domain.ParsedNutritionLabel` (Task 2).
+- Consumes: `com.macroplus.app.domain.ParsedNutritionLabel` (Task 2).
 - Produces: `CreateCustomFoodViewModel.onNutritionLabelScanned(result: ParsedNutritionLabel)` — consumed by Task 6's nav wiring.
 
 - [ ] **Step 1: Write the failing test**
 
-First check whether `app/src/test/java/com/macrotrack/app/ui/search/CreateCustomFoodViewModelTest.kt` already exists; if it does, add this test to it instead of creating a new file, matching whatever fake/fixture `CustomFoodRepository` it already uses. If it doesn't exist, create it with a minimal fake repository:
+First check whether `app/src/test/java/com/macroplus/app/ui/search/CreateCustomFoodViewModelTest.kt` already exists; if it does, add this test to it instead of creating a new file, matching whatever fake/fixture `CustomFoodRepository` it already uses. If it doesn't exist, create it with a minimal fake repository:
 
 ```kotlin
-package com.macrotrack.app.ui.search
+package com.macroplus.app.ui.search
 
-import com.macrotrack.app.data.CustomFoodRepository
-import com.macrotrack.app.data.model.CustomFood
-import com.macrotrack.app.domain.ParsedNutritionLabel
+import com.macroplus.app.data.CustomFoodRepository
+import com.macroplus.app.data.model.CustomFood
+import com.macroplus.app.domain.ParsedNutritionLabel
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -884,7 +884,7 @@ class CreateCustomFoodViewModelTest {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `./gradlew :app:testDebugUnitTest --tests com.macrotrack.app.ui.search.CreateCustomFoodViewModelTest`
+Run: `./gradlew :app:testDebugUnitTest --tests com.macroplus.app.ui.search.CreateCustomFoodViewModelTest`
 Expected: FAIL — `onNutritionLabelScanned` doesn't exist yet.
 
 - [ ] **Step 3: Write the implementation**
@@ -892,7 +892,7 @@ Expected: FAIL — `onNutritionLabelScanned` doesn't exist yet.
 In `CreateCustomFoodViewModel.kt`, add the import and the new function:
 
 ```kotlin
-import com.macrotrack.app.domain.ParsedNutritionLabel
+import com.macroplus.app.domain.ParsedNutritionLabel
 ```
 
 ```kotlin
@@ -920,13 +920,13 @@ import com.macrotrack.app.domain.ParsedNutritionLabel
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `./gradlew :app:testDebugUnitTest --tests com.macrotrack.app.ui.search.CreateCustomFoodViewModelTest`
+Run: `./gradlew :app:testDebugUnitTest --tests com.macroplus.app.ui.search.CreateCustomFoodViewModelTest`
 Expected: PASS
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add app/src/main/java/com/macrotrack/app/ui/search/CreateCustomFoodViewModel.kt app/src/test/java/com/macrotrack/app/ui/search/CreateCustomFoodViewModelTest.kt
+git add app/src/main/java/com/macroplus/app/ui/search/CreateCustomFoodViewModel.kt app/src/test/java/com/macroplus/app/ui/search/CreateCustomFoodViewModelTest.kt
 git commit -m "Add CreateCustomFoodViewModel.onNutritionLabelScanned"
 ```
 
@@ -935,7 +935,7 @@ git commit -m "Add CreateCustomFoodViewModel.onNutritionLabelScanned"
 ### Task 5: Add the "Scan nutrition label" button to `CreateCustomFoodScreen`
 
 **Files:**
-- Modify: `app/src/main/java/com/macrotrack/app/ui/search/CreateCustomFoodScreen.kt`
+- Modify: `app/src/main/java/com/macroplus/app/ui/search/CreateCustomFoodScreen.kt`
 
 **Interfaces:**
 - Consumes: a new `onScanNutritionLabel: () -> Unit` parameter (navigation is the nav host's job, per this app's existing pattern where screens take callbacks, not `NavController` references directly - see how `FoodSearchScreen` takes `onScanBarcode: () -> Unit`).
@@ -976,12 +976,12 @@ import androidx.compose.material3.OutlinedButton
 - [ ] **Step 2: Verify it still compiles**
 
 Run: `./gradlew :app:compileDebugKotlin`
-Expected: FAILS at this point, because `MacroTrackNavHost.kt` (Task 6) hasn't been updated yet to pass the new `onScanNutritionLabel` argument - `CreateCustomFoodScreen`'s only call site now has a missing required parameter. This is expected; Task 6 fixes it. Do not add a default value to `onScanNutritionLabel` to paper over this - the nav host is supposed to wire real navigation here, and a silently-accepted no-op default would hide that if Task 6 were ever skipped.
+Expected: FAILS at this point, because `MacroPlusNavHost.kt` (Task 6) hasn't been updated yet to pass the new `onScanNutritionLabel` argument - `CreateCustomFoodScreen`'s only call site now has a missing required parameter. This is expected; Task 6 fixes it. Do not add a default value to `onScanNutritionLabel` to paper over this - the nav host is supposed to wire real navigation here, and a silently-accepted no-op default would hide that if Task 6 were ever skipped.
 
 - [ ] **Step 3: Commit**
 
 ```bash
-git add app/src/main/java/com/macrotrack/app/ui/search/CreateCustomFoodScreen.kt
+git add app/src/main/java/com/macroplus/app/ui/search/CreateCustomFoodScreen.kt
 git commit -m "Add Scan nutrition label button to CreateCustomFoodScreen (nav wiring in next task)"
 ```
 
@@ -990,8 +990,8 @@ git commit -m "Add Scan nutrition label button to CreateCustomFoodScreen (nav wi
 ### Task 6: Wire the navigation route and consume the scanned result
 
 **Files:**
-- Modify: `app/src/main/java/com/macrotrack/app/ui/nav/Destinations.kt`
-- Modify: `app/src/main/java/com/macrotrack/app/ui/nav/MacroTrackNavHost.kt`
+- Modify: `app/src/main/java/com/macroplus/app/ui/nav/Destinations.kt`
+- Modify: `app/src/main/java/com/macroplus/app/ui/nav/MacroPlusNavHost.kt`
 
 **Interfaces:**
 - Consumes: `NutritionLabelScannerScreen` (Task 3), `CreateCustomFoodViewModel.onNutritionLabelScanned` (Task 4), `CreateCustomFoodScreen`'s `onScanNutritionLabel` parameter (Task 5).
@@ -1013,7 +1013,7 @@ In `Destinations.kt`, add alongside the existing `BARCODE_SCANNER`/`SCANNED_BARC
     const val SCANNED_LABEL_SERVING_UNIT_KEY = "scanned_label_serving_unit"
 ```
 
-- [ ] **Step 2: Update the `CreateCustomFoodScreen` call site in `MacroTrackNavHost.kt`**
+- [ ] **Step 2: Update the `CreateCustomFoodScreen` call site in `MacroPlusNavHost.kt`**
 
 Find the existing `composable(route = Destinations.CREATE_CUSTOM_FOOD_PATTERN, ...)` block. Replace its body with:
 
@@ -1096,7 +1096,7 @@ Find the existing `composable(route = Destinations.CREATE_CUSTOM_FOOD_PATTERN, .
 Add the import:
 
 ```kotlin
-import com.macrotrack.app.domain.ParsedNutritionLabel
+import com.macroplus.app.domain.ParsedNutritionLabel
 ```
 
 - [ ] **Step 3: Add the new scanner route**
@@ -1134,7 +1134,7 @@ Expected: PASS (all existing tests plus this plan's new ones).
 - [ ] **Step 6: Commit**
 
 ```bash
-git add app/src/main/java/com/macrotrack/app/ui/nav/Destinations.kt app/src/main/java/com/macrotrack/app/ui/nav/MacroTrackNavHost.kt
+git add app/src/main/java/com/macroplus/app/ui/nav/Destinations.kt app/src/main/java/com/macroplus/app/ui/nav/MacroPlusNavHost.kt
 git commit -m "Wire nutrition-label scanner navigation into Create Custom Food"
 ```
 

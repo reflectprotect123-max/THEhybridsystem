@@ -1,4 +1,4 @@
-# MacroTrack
+# Macro+
 
 Native Android application for nutrition tracking, built with Kotlin and
 Jetpack Compose against a Supabase/Postgres backend. There is no React Native,
@@ -38,7 +38,7 @@ examples/checkin.json                         Engine CLI example
   it.)
 
 ```bash
-cd /workspace/macrotrack
+cd /workspace/macroplus
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install requests

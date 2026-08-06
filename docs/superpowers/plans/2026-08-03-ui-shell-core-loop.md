@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build the first real Jetpack Compose UI for MacroTrack — theme, navigation, auth, and the core daily-logging loop (search a food, add it to today's log, see today's totals) — wired to the repository layer already built and reviewed across six prior data-layer slices.
+**Goal:** Build the first real Jetpack Compose UI for Macro+ — theme, navigation, auth, and the core daily-logging loop (search a food, add it to today's log, see today's totals) — wired to the repository layer already built and reviewed across six prior data-layer slices.
 
 **Architecture:** A `ui/theme` package for Material3 styling, a small `AuthRepository` added to the data layer, a top-level `NavHost` that gates between an auth graph and a main app graph based on `AuthRepository.sessionStatus`, and three screens (Daily Log, Food Search, Add Log Entry) each with a `ViewModel` that calls the existing repositories directly (no new domain logic — everything the screens need was already built in prior slices).
 
@@ -17,7 +17,7 @@
 - `client.auth.signOut(scope: SignOutScope = SignOutScope.LOCAL)` is `suspend`.
 - Never render a day with no logged entries as zero calories — `LogRepository.getDailyTotals(date)` already returns `null` for that case (an already-verified, already-tested repository behavior); the UI must show an explicit "nothing logged yet" empty state, never a `DailyTotals`-shaped zero.
 - Every repository call from a `ViewModel` runs inside `viewModelScope.launch { }` and wraps the call in `try`/`catch`, surfacing failures as a UI-visible error string — never let an uncaught exception crash the screen. This matters especially here because none of these repositories have ever been exercised against a real backend in this session; every network call is a first real use. The `catch` must rethrow `kotlinx.coroutines.CancellationException` before catching `Exception` (i.e. `catch (e: CancellationException) { throw e } catch (e: Exception) { ... }`) — `CancellationException` is a subclass of `Exception`, so without the rethrow, cancelling a coroutine (e.g. superseding an in-flight search) gets caught and surfaced as a spurious user-visible error instead of propagating as normal coroutine cancellation.
-- Follow existing repository/model naming and package conventions exactly: `app/src/main/java/com/macrotrack/app/data/` for repositories, `app/src/main/java/com/macrotrack/app/data/model/` for `@Serializable` data classes, `app/src/main/java/com/macrotrack/app/domain/` for pure logic (already has `ServingScaler`, `Scalable`, `MacroResolution` — reuse these, don't re-derive serving-scaling math). New UI code lives under `app/src/main/java/com/macrotrack/app/ui/`.
+- Follow existing repository/model naming and package conventions exactly: `app/src/main/java/com/macroplus/app/data/` for repositories, `app/src/main/java/com/macroplus/app/data/model/` for `@Serializable` data classes, `app/src/main/java/com/macroplus/app/domain/` for pure logic (already has `ServingScaler`, `Scalable`, `MacroResolution` — reuse these, don't re-derive serving-scaling math). New UI code lives under `app/src/main/java/com/macroplus/app/ui/`.
 - `AppContainer` wires every repository via `by lazy` off one shared `SupabaseClient`; `AuthRepository` joins that list the same way.
 - Out of scope: barcode camera, OCR/URL/speech/image adapters, `macro_programs` UI, weight/trend/coach/check-in screens (see scope decision above), app icon/branding, Play Store packaging.
 
@@ -27,13 +27,13 @@
 
 **Files:**
 - Modify: `app/build.gradle.kts`
-- Create: `app/src/main/java/com/macrotrack/app/ui/theme/Color.kt`
-- Create: `app/src/main/java/com/macrotrack/app/ui/theme/Type.kt`
-- Create: `app/src/main/java/com/macrotrack/app/ui/theme/Theme.kt`
+- Create: `app/src/main/java/com/macroplus/app/ui/theme/Color.kt`
+- Create: `app/src/main/java/com/macroplus/app/ui/theme/Type.kt`
+- Create: `app/src/main/java/com/macroplus/app/ui/theme/Theme.kt`
 
 **Interfaces:**
 - Consumes: nothing from earlier tasks.
-- Produces: `@Composable fun MacroTrackTheme(darkTheme: Boolean = isSystemInDarkTheme(), content: @Composable () -> Unit)` in package `com.macrotrack.app.ui.theme`. Every later screen task wraps its `@Preview`/root content in this.
+- Produces: `@Composable fun MacroPlusTheme(darkTheme: Boolean = isSystemInDarkTheme(), content: @Composable () -> Unit)` in package `com.macroplus.app.ui.theme`. Every later screen task wraps its `@Preview`/root content in this.
 
 - [ ] **Step 1: Add the navigation-compose dependency**
 
@@ -47,10 +47,10 @@ Note for whoever builds this on a real machine: this sandbox cannot resolve Grad
 
 - [ ] **Step 2: Write the color palette**
 
-Create `app/src/main/java/com/macrotrack/app/ui/theme/Color.kt`:
+Create `app/src/main/java/com/macroplus/app/ui/theme/Color.kt`:
 
 ```kotlin
-package com.macrotrack.app.ui.theme
+package com.macroplus.app.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
@@ -70,17 +70,17 @@ val NeutralGray = Color(0xFF8A8A82)
 
 - [ ] **Step 3: Write the typography scale**
 
-Create `app/src/main/java/com/macrotrack/app/ui/theme/Type.kt`:
+Create `app/src/main/java/com/macroplus/app/ui/theme/Type.kt`:
 
 ```kotlin
-package com.macrotrack.app.ui.theme
+package com.macroplus.app.ui.theme
 
 import androidx.compose.material3.Typography
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 
-val MacroTrackTypography = Typography(
+val MacroPlusTypography = Typography(
     headlineMedium = TextStyle(fontWeight = FontWeight.SemiBold, fontSize = 28.sp, lineHeight = 34.sp),
     titleLarge = TextStyle(fontWeight = FontWeight.SemiBold, fontSize = 22.sp, lineHeight = 28.sp),
     titleMedium = TextStyle(fontWeight = FontWeight.Medium, fontSize = 17.sp, lineHeight = 24.sp),
@@ -93,10 +93,10 @@ val MacroTrackTypography = Typography(
 
 - [ ] **Step 4: Write the theme composable**
 
-Create `app/src/main/java/com/macrotrack/app/ui/theme/Theme.kt`:
+Create `app/src/main/java/com/macroplus/app/ui/theme/Theme.kt`:
 
 ```kotlin
-package com.macrotrack.app.ui.theme
+package com.macroplus.app.ui.theme
 
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
@@ -133,14 +133,14 @@ private val DarkColors = darkColorScheme(
 )
 
 @Composable
-fun MacroTrackTheme(
+fun MacroPlusTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
     content: @Composable () -> Unit,
 ) {
     val colorScheme = if (darkTheme) DarkColors else LightColors
     MaterialTheme(
         colorScheme = colorScheme,
-        typography = MacroTrackTypography,
+        typography = MacroPlusTypography,
         content = content,
     )
 }
@@ -153,8 +153,8 @@ Read all three new files back and confirm: every `Color`/`TextStyle`/`ColorSchem
 - [ ] **Step 6: Commit**
 
 ```bash
-git add app/build.gradle.kts app/src/main/java/com/macrotrack/app/ui/theme/
-git commit -m "feat: add navigation-compose dependency and MacroTrackTheme"
+git add app/build.gradle.kts app/src/main/java/com/macroplus/app/ui/theme/
+git commit -m "feat: add navigation-compose dependency and MacroPlusTheme"
 ```
 
 ---
@@ -162,8 +162,8 @@ git commit -m "feat: add navigation-compose dependency and MacroTrackTheme"
 ### Task 2: AuthRepository
 
 **Files:**
-- Create: `app/src/main/java/com/macrotrack/app/data/AuthRepository.kt`
-- Modify: `app/src/main/java/com/macrotrack/app/data/AppContainer.kt`
+- Create: `app/src/main/java/com/macroplus/app/data/AuthRepository.kt`
+- Modify: `app/src/main/java/com/macroplus/app/data/AppContainer.kt`
 
 **Interfaces:**
 - Consumes: `SupabaseClientProvider` (already exists).
@@ -171,10 +171,10 @@ git commit -m "feat: add navigation-compose dependency and MacroTrackTheme"
 
 - [ ] **Step 1: Write the implementation**
 
-Create `app/src/main/java/com/macrotrack/app/data/AuthRepository.kt`:
+Create `app/src/main/java/com/macroplus/app/data/AuthRepository.kt`:
 
 ```kotlin
-package com.macrotrack.app.data
+package com.macroplus.app.data
 
 import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.auth.auth
@@ -216,7 +216,7 @@ class SupabaseAuthRepository(private val client: SupabaseClient) : AuthRepositor
 
 - [ ] **Step 2: Wire into AppContainer**
 
-In `app/src/main/java/com/macrotrack/app/data/AppContainer.kt`, add one line after `private val client by lazy { ... }`:
+In `app/src/main/java/com/macroplus/app/data/AppContainer.kt`, add one line after `private val client by lazy { ... }`:
 
 ```kotlin
     val authRepository: AuthRepository by lazy { SupabaseAuthRepository(client) }
@@ -229,7 +229,7 @@ Confirm `Email.Config`'s two mutable properties are exactly named `email`/`passw
 - [ ] **Step 4: Commit**
 
 ```bash
-git add app/src/main/java/com/macrotrack/app/data/AuthRepository.kt app/src/main/java/com/macrotrack/app/data/AppContainer.kt
+git add app/src/main/java/com/macroplus/app/data/AuthRepository.kt app/src/main/java/com/macroplus/app/data/AppContainer.kt
 git commit -m "feat: add AuthRepository wrapping Supabase email/password auth"
 ```
 
@@ -238,20 +238,20 @@ git commit -m "feat: add AuthRepository wrapping Supabase email/password auth"
 ### Task 3: Navigation graph + MainActivity
 
 **Files:**
-- Create: `app/src/main/java/com/macrotrack/app/ui/nav/Destinations.kt`
-- Create: `app/src/main/java/com/macrotrack/app/ui/nav/MacroTrackNavHost.kt`
-- Modify: `app/src/main/java/com/macrotrack/app/MainActivity.kt`
+- Create: `app/src/main/java/com/macroplus/app/ui/nav/Destinations.kt`
+- Create: `app/src/main/java/com/macroplus/app/ui/nav/MacroPlusNavHost.kt`
+- Modify: `app/src/main/java/com/macroplus/app/MainActivity.kt`
 
 **Interfaces:**
-- Consumes: `AuthRepository.sessionStatus` (Task 2), `MacroTrackTheme` (Task 1). References `AuthScreen`/`AuthViewModel` (Task 4), `DailyLogScreen`/`DailyLogViewModel` (Task 5), `FoodSearchScreen`/`FoodSearchViewModel` (Task 6), `AddLogEntryScreen`/`AddLogEntryViewModel` (Task 7) by name only — those files don't exist yet when this task is implemented, so this task's code will not compile stand-alone until Tasks 4-7 land. That's expected and consistent with `MacroTrackNavHost` being the last file wired together; note this explicitly in the task report rather than treating it as a defect.
-- Produces: `object Destinations` with route constants `AUTH`, `DAILY_LOG`, `FOOD_SEARCH`, and a route-building function `addLogEntryRoute(entryKind: String, id: String)` plus the pattern `ADD_LOG_ENTRY_PATTERN`. `@Composable fun MacroTrackNavHost(appContainer: AppContainer)`.
+- Consumes: `AuthRepository.sessionStatus` (Task 2), `MacroPlusTheme` (Task 1). References `AuthScreen`/`AuthViewModel` (Task 4), `DailyLogScreen`/`DailyLogViewModel` (Task 5), `FoodSearchScreen`/`FoodSearchViewModel` (Task 6), `AddLogEntryScreen`/`AddLogEntryViewModel` (Task 7) by name only — those files don't exist yet when this task is implemented, so this task's code will not compile stand-alone until Tasks 4-7 land. That's expected and consistent with `MacroPlusNavHost` being the last file wired together; note this explicitly in the task report rather than treating it as a defect.
+- Produces: `object Destinations` with route constants `AUTH`, `DAILY_LOG`, `FOOD_SEARCH`, and a route-building function `addLogEntryRoute(entryKind: String, id: String)` plus the pattern `ADD_LOG_ENTRY_PATTERN`. `@Composable fun MacroPlusNavHost(appContainer: AppContainer)`.
 
 - [ ] **Step 1: Write the destinations**
 
-Create `app/src/main/java/com/macrotrack/app/ui/nav/Destinations.kt`:
+Create `app/src/main/java/com/macroplus/app/ui/nav/Destinations.kt`:
 
 ```kotlin
-package com.macrotrack.app.ui.nav
+package com.macroplus.app.ui.nav
 
 object Destinations {
     const val AUTH = "auth"
@@ -261,17 +261,17 @@ object Destinations {
     private const val ADD_LOG_ENTRY_BASE = "add_log_entry"
     const val ADD_LOG_ENTRY_PATTERN = "$ADD_LOG_ENTRY_BASE/{entryKind}/{id}"
 
-    /** `entryKind` is one of `EntryKind.FOOD`/`CUSTOM_FOOD`/`RECIPE` (com.macrotrack.app.data.model.EntryKind). */
+    /** `entryKind` is one of `EntryKind.FOOD`/`CUSTOM_FOOD`/`RECIPE` (com.macroplus.app.data.model.EntryKind). */
     fun addLogEntryRoute(entryKind: String, id: String): String = "$ADD_LOG_ENTRY_BASE/$entryKind/$id"
 }
 ```
 
 - [ ] **Step 2: Write the nav host**
 
-Create `app/src/main/java/com/macrotrack/app/ui/nav/MacroTrackNavHost.kt`:
+Create `app/src/main/java/com/macroplus/app/ui/nav/MacroPlusNavHost.kt`:
 
 ```kotlin
-package com.macrotrack.app.ui.nav
+package com.macroplus.app.ui.nav
 
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Surface
@@ -285,19 +285,19 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
-import com.macrotrack.app.data.AppContainer
-import com.macrotrack.app.ui.auth.AuthScreen
-import com.macrotrack.app.ui.auth.AuthViewModel
-import com.macrotrack.app.ui.dailylog.DailyLogScreen
-import com.macrotrack.app.ui.dailylog.DailyLogViewModel
-import com.macrotrack.app.ui.search.AddLogEntryScreen
-import com.macrotrack.app.ui.search.AddLogEntryViewModel
-import com.macrotrack.app.ui.search.FoodSearchScreen
-import com.macrotrack.app.ui.search.FoodSearchViewModel
+import com.macroplus.app.data.AppContainer
+import com.macroplus.app.ui.auth.AuthScreen
+import com.macroplus.app.ui.auth.AuthViewModel
+import com.macroplus.app.ui.dailylog.DailyLogScreen
+import com.macroplus.app.ui.dailylog.DailyLogViewModel
+import com.macroplus.app.ui.search.AddLogEntryScreen
+import com.macroplus.app.ui.search.AddLogEntryViewModel
+import com.macroplus.app.ui.search.FoodSearchScreen
+import com.macroplus.app.ui.search.FoodSearchViewModel
 import io.github.jan.supabase.auth.status.SessionStatus
 
 @Composable
-fun MacroTrackNavHost(appContainer: AppContainer) {
+fun MacroPlusNavHost(appContainer: AppContainer) {
     val sessionStatus by appContainer.authRepository.sessionStatus.collectAsState()
 
     when (sessionStatus) {
@@ -360,10 +360,10 @@ fun MacroTrackNavHost(appContainer: AppContainer) {
 
 - [ ] **Step 3: Rewrite MainActivity**
 
-Replace the full contents of `app/src/main/java/com/macrotrack/app/MainActivity.kt`:
+Replace the full contents of `app/src/main/java/com/macroplus/app/MainActivity.kt`:
 
 ```kotlin
-package com.macrotrack.app
+package com.macroplus.app
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -371,9 +371,9 @@ import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
-import com.macrotrack.app.data.AppContainer
-import com.macrotrack.app.ui.nav.MacroTrackNavHost
-import com.macrotrack.app.ui.theme.MacroTrackTheme
+import com.macroplus.app.data.AppContainer
+import com.macroplus.app.ui.nav.MacroPlusNavHost
+import com.macroplus.app.ui.theme.MacroPlusTheme
 
 class MainActivity : ComponentActivity() {
     private val appContainer = AppContainer()
@@ -381,9 +381,9 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            MacroTrackTheme {
+            MacroPlusTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
-                    MacroTrackNavHost(appContainer)
+                    MacroPlusNavHost(appContainer)
                 }
             }
         }
@@ -398,7 +398,7 @@ This task's two new files reference `AuthScreen`/`AuthViewModel`/`DailyLogScreen
 - [ ] **Step 5: Commit**
 
 ```bash
-git add app/src/main/java/com/macrotrack/app/ui/nav/ app/src/main/java/com/macrotrack/app/MainActivity.kt
+git add app/src/main/java/com/macroplus/app/ui/nav/ app/src/main/java/com/macroplus/app/MainActivity.kt
 git commit -m "feat: add navigation graph and auth-gated MainActivity"
 ```
 
@@ -407,8 +407,8 @@ git commit -m "feat: add navigation graph and auth-gated MainActivity"
 ### Task 4: Auth screen
 
 **Files:**
-- Create: `app/src/main/java/com/macrotrack/app/ui/auth/AuthViewModel.kt`
-- Create: `app/src/main/java/com/macrotrack/app/ui/auth/AuthScreen.kt`
+- Create: `app/src/main/java/com/macroplus/app/ui/auth/AuthViewModel.kt`
+- Create: `app/src/main/java/com/macroplus/app/ui/auth/AuthScreen.kt`
 
 **Interfaces:**
 - Consumes: `AuthRepository` (Task 2).
@@ -416,14 +416,14 @@ git commit -m "feat: add navigation graph and auth-gated MainActivity"
 
 - [ ] **Step 1: Write the ViewModel**
 
-Create `app/src/main/java/com/macrotrack/app/ui/auth/AuthViewModel.kt`:
+Create `app/src/main/java/com/macroplus/app/ui/auth/AuthViewModel.kt`:
 
 ```kotlin
-package com.macrotrack.app.ui.auth
+package com.macroplus.app.ui.auth
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.macrotrack.app.data.AuthRepository
+import com.macroplus.app.data.AuthRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -467,10 +467,10 @@ class AuthViewModel(private val authRepository: AuthRepository) : ViewModel() {
 
 - [ ] **Step 2: Write the screen**
 
-Create `app/src/main/java/com/macrotrack/app/ui/auth/AuthScreen.kt`:
+Create `app/src/main/java/com/macroplus/app/ui/auth/AuthScreen.kt`:
 
 ```kotlin
-package com.macrotrack.app.ui.auth
+package com.macroplus.app.ui.auth
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -551,7 +551,7 @@ Confirm `AuthViewModel`'s constructor signature (`AuthViewModel(authRepository: 
 - [ ] **Step 4: Commit**
 
 ```bash
-git add app/src/main/java/com/macrotrack/app/ui/auth/
+git add app/src/main/java/com/macroplus/app/ui/auth/
 git commit -m "feat: add AuthScreen with sign-in/sign-up toggle"
 ```
 
@@ -560,26 +560,26 @@ git commit -m "feat: add AuthScreen with sign-in/sign-up toggle"
 ### Task 5: Daily Log screen
 
 **Files:**
-- Create: `app/src/main/java/com/macrotrack/app/ui/dailylog/DailyLogViewModel.kt`
-- Create: `app/src/main/java/com/macrotrack/app/ui/dailylog/DailyLogScreen.kt`
+- Create: `app/src/main/java/com/macroplus/app/ui/dailylog/DailyLogViewModel.kt`
+- Create: `app/src/main/java/com/macroplus/app/ui/dailylog/DailyLogScreen.kt`
 
 **Interfaces:**
-- Consumes: `LogRepository.listEntries(date: LocalDate): List<FoodLogEntry>`, `LogRepository.getDailyTotals(date: LocalDate): DailyTotals?` (nullable — never a zero-fill for an unlogged day), `DayStatusRepository.getStatus(date: LocalDate): DailyLogStatus?` (already exist, `app/src/main/java/com/macrotrack/app/data/`). `FoodLogEntry` fields: `id`, `meal`, `displayName`, `calories`, `proteinG`, `carbsG`, `fatG`, `quantity`, `unit`. `DailyTotals` fields: `calories`, `proteinG`, `carbsG`, `fatG`, `entryCount`.
+- Consumes: `LogRepository.listEntries(date: LocalDate): List<FoodLogEntry>`, `LogRepository.getDailyTotals(date: LocalDate): DailyTotals?` (nullable — never a zero-fill for an unlogged day), `DayStatusRepository.getStatus(date: LocalDate): DailyLogStatus?` (already exist, `app/src/main/java/com/macroplus/app/data/`). `FoodLogEntry` fields: `id`, `meal`, `displayName`, `calories`, `proteinG`, `carbsG`, `fatG`, `quantity`, `unit`. `DailyTotals` fields: `calories`, `proteinG`, `carbsG`, `fatG`, `entryCount`.
 - Produces: `class DailyLogViewModel(logRepository: LogRepository, dayStatusRepository: DayStatusRepository) : ViewModel()` with `StateFlow<DailyLogUiState>` named `uiState`, `fun refresh()`. `@Composable fun DailyLogScreen(viewModel: DailyLogViewModel, onAddFood: () -> Unit)`. Task 3's nav host already constructs this ViewModel and calls this Composable with these exact parameter names — must match.
 
 - [ ] **Step 1: Write the ViewModel**
 
-Create `app/src/main/java/com/macrotrack/app/ui/dailylog/DailyLogViewModel.kt`:
+Create `app/src/main/java/com/macroplus/app/ui/dailylog/DailyLogViewModel.kt`:
 
 ```kotlin
-package com.macrotrack.app.ui.dailylog
+package com.macroplus.app.ui.dailylog
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.macrotrack.app.data.DayStatusRepository
-import com.macrotrack.app.data.LogRepository
-import com.macrotrack.app.data.model.DailyTotals
-import com.macrotrack.app.data.model.FoodLogEntry
+import com.macroplus.app.data.DayStatusRepository
+import com.macroplus.app.data.LogRepository
+import com.macroplus.app.data.model.DailyTotals
+import com.macroplus.app.data.model.FoodLogEntry
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -626,10 +626,10 @@ Note: `dayStatusRepository` is accepted as a constructor parameter (matching Tas
 
 - [ ] **Step 2: Write the screen**
 
-Create `app/src/main/java/com/macrotrack/app/ui/dailylog/DailyLogScreen.kt`:
+Create `app/src/main/java/com/macroplus/app/ui/dailylog/DailyLogScreen.kt`:
 
 ```kotlin
-package com.macrotrack.app.ui.dailylog
+package com.macroplus.app.ui.dailylog
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -710,12 +710,12 @@ Requires adding `implementation("androidx.compose.material:material-icons-extend
 
 - [ ] **Step 3: Static review**
 
-Confirm `FoodLogEntry`'s actual field names (`displayName`, `meal`, `calories`, etc.) match `app/src/main/java/com/macrotrack/app/data/model/LogEntryModels.kt` exactly. Confirm `DailyTotals`'s fields match the same file. State explicitly that no compile was possible.
+Confirm `FoodLogEntry`'s actual field names (`displayName`, `meal`, `calories`, etc.) match `app/src/main/java/com/macroplus/app/data/model/LogEntryModels.kt` exactly. Confirm `DailyTotals`'s fields match the same file. State explicitly that no compile was possible.
 
 - [ ] **Step 4: Commit**
 
 ```bash
-git add app/src/main/java/com/macrotrack/app/ui/dailylog/
+git add app/src/main/java/com/macroplus/app/ui/dailylog/
 git commit -m "feat: add DailyLogScreen showing today's entries and totals"
 ```
 
@@ -724,32 +724,32 @@ git commit -m "feat: add DailyLogScreen showing today's entries and totals"
 ### Task 6: Food Search screen
 
 **Files:**
-- Create: `app/src/main/java/com/macrotrack/app/ui/search/FoodSearchViewModel.kt`
-- Create: `app/src/main/java/com/macrotrack/app/ui/search/FoodSearchScreen.kt`
+- Create: `app/src/main/java/com/macroplus/app/ui/search/FoodSearchViewModel.kt`
+- Create: `app/src/main/java/com/macroplus/app/ui/search/FoodSearchScreen.kt`
 
 **Interfaces:**
-- Consumes: `FoodRepository.search(query: String, limit: Int = 20): List<Food>`, `CustomFoodRepository.list(): List<CustomFood>`, `RecipeRepository.list(): List<Recipe>`, `FavoritesRepository.list(): List<FoodFavorite>`, `RecentFoodRepository.getRecent(limit: Int = 10): List<RecentLogReference>` (all already exist). `Food`/`CustomFood` fields: `id`, `name`, `brand`. `Recipe` fields: `id`, `name`. `RecentLogReference` fields: `foodId`, `customFoodId`, `recipeId`, `displayName` (`app/src/main/java/com/macrotrack/app/domain/` — check the actual field names in `RecentLogReference` before writing this task's code, it's a domain type produced by `dedupeRecentReferences`, not one of the model files read for this plan).
-- Produces: `data class FoodSearchResult(val entryKind: String, val id: String, val title: String, val subtitle: String?)` and `class FoodSearchViewModel(foodRepository: FoodRepository, customFoodRepository: CustomFoodRepository, recipeRepository: RecipeRepository, favoritesRepository: FavoritesRepository, recentFoodRepository: RecentFoodRepository) : ViewModel()` with `StateFlow<FoodSearchUiState>` named `uiState`, `fun onQueryChanged(query: String)`. `@Composable fun FoodSearchScreen(viewModel: FoodSearchViewModel, onResultSelected: (entryKind: String, id: String) -> Unit)`. Task 3's nav host already constructs this ViewModel and calls this Composable with these exact names — must match. `entryKind` values are `EntryKind.FOOD`/`EntryKind.CUSTOM_FOOD`/`EntryKind.RECIPE` (`com.macrotrack.app.data.model.EntryKind`, already exists).
+- Consumes: `FoodRepository.search(query: String, limit: Int = 20): List<Food>`, `CustomFoodRepository.list(): List<CustomFood>`, `RecipeRepository.list(): List<Recipe>`, `FavoritesRepository.list(): List<FoodFavorite>`, `RecentFoodRepository.getRecent(limit: Int = 10): List<RecentLogReference>` (all already exist). `Food`/`CustomFood` fields: `id`, `name`, `brand`. `Recipe` fields: `id`, `name`. `RecentLogReference` fields: `foodId`, `customFoodId`, `recipeId`, `displayName` (`app/src/main/java/com/macroplus/app/domain/` — check the actual field names in `RecentLogReference` before writing this task's code, it's a domain type produced by `dedupeRecentReferences`, not one of the model files read for this plan).
+- Produces: `data class FoodSearchResult(val entryKind: String, val id: String, val title: String, val subtitle: String?)` and `class FoodSearchViewModel(foodRepository: FoodRepository, customFoodRepository: CustomFoodRepository, recipeRepository: RecipeRepository, favoritesRepository: FavoritesRepository, recentFoodRepository: RecentFoodRepository) : ViewModel()` with `StateFlow<FoodSearchUiState>` named `uiState`, `fun onQueryChanged(query: String)`. `@Composable fun FoodSearchScreen(viewModel: FoodSearchViewModel, onResultSelected: (entryKind: String, id: String) -> Unit)`. Task 3's nav host already constructs this ViewModel and calls this Composable with these exact names — must match. `entryKind` values are `EntryKind.FOOD`/`EntryKind.CUSTOM_FOOD`/`EntryKind.RECIPE` (`com.macroplus.app.data.model.EntryKind`, already exists).
 
 - [ ] **Step 1: Read `RecentLogReference`'s actual fields**
 
-Read `app/src/main/java/com/macrotrack/app/domain/` for the file defining `RecentLogReference` (created in the food-repository slice) before writing Step 2 — confirm its exact field names (expected: `foodId: String?`, `customFoodId: String?`, `recipeId: String?`, `displayName: String`, `loggedAt: String`, matching how `RecentFoodRepository.getRecent()` constructs it) and use those exact names.
+Read `app/src/main/java/com/macroplus/app/domain/` for the file defining `RecentLogReference` (created in the food-repository slice) before writing Step 2 — confirm its exact field names (expected: `foodId: String?`, `customFoodId: String?`, `recipeId: String?`, `displayName: String`, `loggedAt: String`, matching how `RecentFoodRepository.getRecent()` constructs it) and use those exact names.
 
 - [ ] **Step 2: Write the ViewModel**
 
-Create `app/src/main/java/com/macrotrack/app/ui/search/FoodSearchViewModel.kt`:
+Create `app/src/main/java/com/macroplus/app/ui/search/FoodSearchViewModel.kt`:
 
 ```kotlin
-package com.macrotrack.app.ui.search
+package com.macroplus.app.ui.search
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.macrotrack.app.data.CustomFoodRepository
-import com.macrotrack.app.data.FavoritesRepository
-import com.macrotrack.app.data.FoodRepository
-import com.macrotrack.app.data.RecentFoodRepository
-import com.macrotrack.app.data.RecipeRepository
-import com.macrotrack.app.data.model.EntryKind
+import com.macroplus.app.data.CustomFoodRepository
+import com.macroplus.app.data.FavoritesRepository
+import com.macroplus.app.data.FoodRepository
+import com.macroplus.app.data.RecentFoodRepository
+import com.macroplus.app.data.RecipeRepository
+import com.macroplus.app.data.model.EntryKind
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -829,10 +829,10 @@ Note: `customFoodRepository.list()`/`recipeRepository.list()` have no server-sid
 
 - [ ] **Step 3: Write the screen**
 
-Create `app/src/main/java/com/macrotrack/app/ui/search/FoodSearchScreen.kt`:
+Create `app/src/main/java/com/macroplus/app/ui/search/FoodSearchScreen.kt`:
 
 ```kotlin
-package com.macrotrack.app.ui.search
+package com.macroplus.app.ui.search
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -902,7 +902,7 @@ Confirm the actual `RecentLogReference` field names read in Step 1 match what St
 - [ ] **Step 5: Commit**
 
 ```bash
-git add app/src/main/java/com/macrotrack/app/ui/search/FoodSearchViewModel.kt app/src/main/java/com/macrotrack/app/ui/search/FoodSearchScreen.kt
+git add app/src/main/java/com/macroplus/app/ui/search/FoodSearchViewModel.kt app/src/main/java/com/macroplus/app/ui/search/FoodSearchScreen.kt
 git commit -m "feat: add FoodSearchScreen with recent-foods and live search"
 ```
 
@@ -911,31 +911,31 @@ git commit -m "feat: add FoodSearchScreen with recent-foods and live search"
 ### Task 7: Add Log Entry screen
 
 **Files:**
-- Create: `app/src/main/java/com/macrotrack/app/ui/search/AddLogEntryViewModel.kt`
-- Create: `app/src/main/java/com/macrotrack/app/ui/search/AddLogEntryScreen.kt`
+- Create: `app/src/main/java/com/macroplus/app/ui/search/AddLogEntryViewModel.kt`
+- Create: `app/src/main/java/com/macroplus/app/ui/search/AddLogEntryScreen.kt`
 
 **Interfaces:**
-- Consumes: `FoodRepository.getById(id: String): Food?`, `CustomFoodRepository.getById(id: String): CustomFood?`, `RecipeRepository.getById(id: String): Recipe?`, `LogRepository.logFood(date, food: Food, quantity: Double, unit: String, meal: String, notes: String? = null)`, `LogRepository.logCustomFood(date, customFood: CustomFood, quantity: Double, unit: String, meal: String, notes: String? = null)`, `LogRepository.logRecipeServings(date, recipeId: String, loggedServings: Double, meal: String, notes: String? = null)` (all already exist). `EntryKind`/`Meal` constants (`com.macrotrack.app.data.model`, already exist: `EntryKind.FOOD`/`CUSTOM_FOOD`/`RECIPE`; `Meal.BREAKFAST`/`LUNCH`/`DINNER`/`SNACK`/`OTHER`).
+- Consumes: `FoodRepository.getById(id: String): Food?`, `CustomFoodRepository.getById(id: String): CustomFood?`, `RecipeRepository.getById(id: String): Recipe?`, `LogRepository.logFood(date, food: Food, quantity: Double, unit: String, meal: String, notes: String? = null)`, `LogRepository.logCustomFood(date, customFood: CustomFood, quantity: Double, unit: String, meal: String, notes: String? = null)`, `LogRepository.logRecipeServings(date, recipeId: String, loggedServings: Double, meal: String, notes: String? = null)` (all already exist). `EntryKind`/`Meal` constants (`com.macroplus.app.data.model`, already exist: `EntryKind.FOOD`/`CUSTOM_FOOD`/`RECIPE`; `Meal.BREAKFAST`/`LUNCH`/`DINNER`/`SNACK`/`OTHER`).
 - Produces: `class AddLogEntryViewModel(entryKind: String, id: String, foodRepository: FoodRepository, customFoodRepository: CustomFoodRepository, recipeRepository: RecipeRepository, logRepository: LogRepository) : ViewModel()` with `StateFlow<AddLogEntryUiState>` named `uiState`, `fun onQuantityChanged(quantity: String)`, `fun onMealChanged(meal: String)`, `fun save()`. `@Composable fun AddLogEntryScreen(viewModel: AddLogEntryViewModel, onSaved: () -> Unit, onCancel: () -> Unit)`. Task 3's nav host already constructs this ViewModel and calls this Composable with these exact names — must match.
 
 - [ ] **Step 1: Write the ViewModel**
 
-Create `app/src/main/java/com/macrotrack/app/ui/search/AddLogEntryViewModel.kt`:
+Create `app/src/main/java/com/macroplus/app/ui/search/AddLogEntryViewModel.kt`:
 
 ```kotlin
-package com.macrotrack.app.ui.search
+package com.macroplus.app.ui.search
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.macrotrack.app.data.CustomFoodRepository
-import com.macrotrack.app.data.FoodRepository
-import com.macrotrack.app.data.LogRepository
-import com.macrotrack.app.data.RecipeRepository
-import com.macrotrack.app.data.model.CustomFood
-import com.macrotrack.app.data.model.EntryKind
-import com.macrotrack.app.data.model.Food
-import com.macrotrack.app.data.model.Meal
-import com.macrotrack.app.data.model.Recipe
+import com.macroplus.app.data.CustomFoodRepository
+import com.macroplus.app.data.FoodRepository
+import com.macroplus.app.data.LogRepository
+import com.macroplus.app.data.RecipeRepository
+import com.macroplus.app.data.model.CustomFood
+import com.macroplus.app.data.model.EntryKind
+import com.macroplus.app.data.model.Food
+import com.macroplus.app.data.model.Meal
+import com.macroplus.app.data.model.Recipe
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -1042,10 +1042,10 @@ class AddLogEntryViewModel(
 
 - [ ] **Step 2: Write the screen**
 
-Create `app/src/main/java/com/macrotrack/app/ui/search/AddLogEntryScreen.kt`:
+Create `app/src/main/java/com/macroplus/app/ui/search/AddLogEntryScreen.kt`:
 
 ```kotlin
-package com.macrotrack.app.ui.search
+package com.macroplus.app.ui.search
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -1066,7 +1066,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.macrotrack.app.data.model.Meal
+import com.macroplus.app.data.model.Meal
 
 private val MEAL_OPTIONS = listOf(Meal.BREAKFAST, Meal.LUNCH, Meal.DINNER, Meal.SNACK, Meal.OTHER)
 
@@ -1122,12 +1122,12 @@ fun AddLogEntryScreen(viewModel: AddLogEntryViewModel, onSaved: () -> Unit, onCa
 
 - [ ] **Step 3: Static review**
 
-Confirm `LogRepository.logFood`/`logCustomFood`/`logRecipeServings`'s parameter order/names match `app/src/main/java/com/macrotrack/app/data/LogRepository.kt` exactly (in particular, `logRecipeServings` takes `recipeId: String`, not a `Recipe` object — confirm `loadedRecipe!!.id` is passed, not `loadedRecipe!!`). Confirm `Food.servingUnit`/`CustomFood.servingUnit` (via the shared `Scalable` interface) are the correct field names for the default unit shown. State explicitly that no compile was possible.
+Confirm `LogRepository.logFood`/`logCustomFood`/`logRecipeServings`'s parameter order/names match `app/src/main/java/com/macroplus/app/data/LogRepository.kt` exactly (in particular, `logRecipeServings` takes `recipeId: String`, not a `Recipe` object — confirm `loadedRecipe!!.id` is passed, not `loadedRecipe!!`). Confirm `Food.servingUnit`/`CustomFood.servingUnit` (via the shared `Scalable` interface) are the correct field names for the default unit shown. State explicitly that no compile was possible.
 
 - [ ] **Step 4: Commit**
 
 ```bash
-git add app/src/main/java/com/macrotrack/app/ui/search/AddLogEntryViewModel.kt app/src/main/java/com/macrotrack/app/ui/search/AddLogEntryScreen.kt
+git add app/src/main/java/com/macroplus/app/ui/search/AddLogEntryViewModel.kt app/src/main/java/com/macroplus/app/ui/search/AddLogEntryScreen.kt
 git commit -m "feat: add AddLogEntryScreen completing the core logging loop"
 ```
 

@@ -1,0 +1,99 @@
+package com.macroplus.app.data
+
+import com.macroplus.app.data.model.NewRecipe
+import com.macroplus.app.data.model.NewRecipeItem
+import com.macroplus.app.data.model.Recipe
+import com.macroplus.app.data.model.RecipeItem
+import io.github.jan.supabase.SupabaseClient
+import io.github.jan.supabase.auth.auth
+import io.github.jan.supabase.postgrest.postgrest
+import io.github.jan.supabase.postgrest.query.Order
+
+interface RecipeRepository {
+    suspend fun list(): List<Recipe>
+    suspend fun create(name: String, description: String?, instructions: String?, servings: Double): Recipe
+    suspend fun addItem(recipeId: String, foodId: String?, customFoodId: String?, quantity: Double, unit: String, sortOrder: Int): RecipeItem
+    suspend fun getItems(recipeId: String): List<RecipeItem>
+    suspend fun getById(id: String): Recipe?
+    suspend fun delete(id: String)
+}
+
+class SupabaseRecipeRepository(private val client: SupabaseClient) : RecipeRepository {
+
+    private suspend fun requireUserId(): String {
+        client.auth.awaitInitialization()
+        return client.auth.currentUserOrNull()?.id
+            ?: error("RecipeRepository used before a user session exists.")
+    }
+
+    override suspend fun list(): List<Recipe> {
+        val userId = requireUserId()
+        return client.postgrest.from("recipes").select {
+            filter { eq("user_id", userId) }
+            order("name", Order.ASCENDING)
+        }.decodeList<Recipe>()
+    }
+
+    override suspend fun create(name: String, description: String?, instructions: String?, servings: Double): Recipe {
+        require(name.isNotBlank()) { "Recipe name must not be blank" }
+        require(servings.isFinite() && servings > 0) {
+            "servings must be finite and > 0 (matches the recipes.servings > 0 check constraint)"
+        }
+        val payload = NewRecipe(
+            userId = requireUserId(),
+            name = name,
+            description = description,
+            instructions = instructions,
+            servings = servings,
+        )
+        return client.postgrest.from("recipes").insert(payload) { select() }.decodeSingle<Recipe>()
+    }
+
+    override suspend fun addItem(
+        recipeId: String,
+        foodId: String?,
+        customFoodId: String?,
+        quantity: Double,
+        unit: String,
+        sortOrder: Int,
+    ): RecipeItem {
+        require((foodId != null) != (customFoodId != null)) {
+            "Exactly one of foodId or customFoodId must be set (matches the recipe_items check constraint)"
+        }
+        require(quantity.isFinite() && quantity > 0) { "quantity must be greater than 0" }
+        require(unit.isNotBlank()) { "unit must not be blank" }
+        val payload = NewRecipeItem(
+            recipeId = recipeId,
+            foodId = foodId,
+            customFoodId = customFoodId,
+            quantity = quantity,
+            unit = unit,
+            sortOrder = sortOrder,
+        )
+        return client.postgrest.from("recipe_items").insert(payload) { select() }.decodeSingle<RecipeItem>()
+    }
+
+    override suspend fun getItems(recipeId: String): List<RecipeItem> {
+        return client.postgrest.from("recipe_items").select {
+            filter { eq("recipe_id", recipeId) }
+            order("sort_order", Order.ASCENDING)
+        }.decodeList<RecipeItem>()
+    }
+
+    override suspend fun getById(id: String): Recipe? {
+        return client.postgrest.from("recipes").select {
+            filter { eq("id", id) }
+            limit(1)
+        }.decodeSingleOrNull<Recipe>()
+    }
+
+    override suspend fun delete(id: String) {
+        val userId = requireUserId()
+        client.postgrest.from("recipes").delete {
+            filter {
+                eq("id", id)
+                eq("user_id", userId)
+            }
+        }
+    }
+}

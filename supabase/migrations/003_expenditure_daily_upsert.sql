@@ -1,4 +1,4 @@
--- MacroTrack: one derived expenditure estimate per user and window end date.
+-- Macro+: one derived expenditure estimate per user and window end date.
 --
 -- The app recomputes today's estimate when the Coach screen resumes. These
 -- rows are derived state, not user-entered history, so a same-day recompute
